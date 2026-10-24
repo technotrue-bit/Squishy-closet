@@ -103,11 +103,14 @@ fit();
 
 const ray = new THREE.Raycaster();
 const ndc = new THREE.Vector2();
-function hitSquishy(x: number, y: number): THREE.Vector3 | null {
+function rayHit(x: number, y: number): THREE.Intersection | null {
   ndc.set((x / window.innerWidth) * 2 - 1, -(y / window.innerHeight) * 2 + 1);
   ray.setFromCamera(ndc, camera);
   const hits = ray.intersectObject(squishy.mesh, false);
-  return hits.length ? hits[0].point : null;
+  return hits[0] ?? null;
+}
+function hitSquishy(x: number, y: number): THREE.Vector3 | null {
+  return rayHit(x, y)?.point ?? null;
 }
 /** Touches near the bun count too, so small fingers don't miss. */
 function nearSquishy(x: number, y: number): THREE.Vector3 | null {
@@ -177,14 +180,63 @@ const gestures = new Gestures((e: GestureEvent) => {
 
 const canvas = renderer.domElement;
 const nowMs = () => performance.now();
+// Every finger on the bun pushes in right where it is and follows it around,
+// separately from what the gesture turns out to be.
+const fingers = new Map<number, { x0: number; y0: number; sliding: boolean }>();
+/** The bun's surface under a screen point, or the nearest edge when just off it. */
+function fingerDir(x: number, y: number): THREE.Vector3 | null {
+  const hit = rayHit(x, y);
+  if (hit) return squishy.dirAtHit(hit);
+  const c = squishy.group.position.clone();
+  c.y += 0.1;
+  const s = c.project(camera);
+  const sx = ((s.x + 1) / 2) * window.innerWidth;
+  const sy = ((1 - s.y) / 2) * window.innerHeight;
+  // Walk in toward the middle until we land on the bun.
+  for (const f of [0.85, 0.7, 0.55, 0.4]) {
+    const h = rayHit(sx + (x - sx) * f, sy + (y - sy) * f);
+    if (h) return squishy.dirAtHit(h);
+  }
+  return null;
+}
+function fingerEnd(id: number): void {
+  if (!fingers.delete(id)) return;
+  squishy.fingerUp(id);
+}
+
 canvas.addEventListener("pointerdown", (e) => {
   sfx.unlockAudio();
   canvas.setPointerCapture(e.pointerId);
-  gestures.down(e.pointerId, e.clientX, e.clientY, nowMs(), squishy.isHome && nearSquishy(e.clientX, e.clientY) !== null);
+  const onBody = squishy.isHome && nearSquishy(e.clientX, e.clientY) !== null;
+  if (onBody) {
+    const dir = fingerDir(e.clientX, e.clientY);
+    if (dir) {
+      fingers.set(e.pointerId, { x0: e.clientX, y0: e.clientY, sliding: false });
+      squishy.fingerDown(e.pointerId, dir);
+    }
+  }
+  gestures.down(e.pointerId, e.clientX, e.clientY, nowMs(), onBody);
 });
-canvas.addEventListener("pointermove", (e) => gestures.move(e.pointerId, e.clientX, e.clientY, nowMs()));
-canvas.addEventListener("pointerup", (e) => gestures.up(e.pointerId, e.clientX, e.clientY, nowMs()));
-canvas.addEventListener("pointercancel", (e) => gestures.cancel(e.pointerId, nowMs()));
+canvas.addEventListener("pointermove", (e) => {
+  const f = fingers.get(e.pointerId);
+  if (f) {
+    if (!squishy.isHome) fingerEnd(e.pointerId);
+    else {
+      if (Math.hypot(e.clientX - f.x0, e.clientY - f.y0) > 12) f.sliding = true;
+      const dir = fingerDir(e.clientX, e.clientY);
+      if (dir) squishy.fingerMove(e.pointerId, dir, f.sliding);
+    }
+  }
+  gestures.move(e.pointerId, e.clientX, e.clientY, nowMs());
+});
+canvas.addEventListener("pointerup", (e) => {
+  fingerEnd(e.pointerId);
+  gestures.up(e.pointerId, e.clientX, e.clientY, nowMs());
+});
+canvas.addEventListener("pointercancel", (e) => {
+  fingerEnd(e.pointerId);
+  gestures.cancel(e.pointerId, nowMs());
+});
 
 // ---- loop -------------------------------------------------------------
 

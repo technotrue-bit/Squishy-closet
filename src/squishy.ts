@@ -48,6 +48,16 @@ const RADIUS = 1.05;
 
 type Mode = "home" | "fly" | "dizzy" | "return";
 
+/** A finger on the squishy: the dent sits right under it and follows it. */
+interface Finger {
+  dir: THREE.Vector3;
+  depth: Spring;
+  t0: number;
+  live: boolean;
+  sliding: boolean;
+  slow: boolean;
+}
+
 export class Squishy {
   readonly group = new THREE.Group(); // moves around the world
   private body = new THREE.Group(); // rotates about the bottom
@@ -96,6 +106,7 @@ export class Squishy {
   private nextFidget = 6;
   private nextBlink = 2;
   private blinkT = -1;
+  private fingers = new Map<number, Finger>();
   private exprOverride: Expression | null = null;
   private exprUntil = 0;
   private talk = 0;
@@ -203,6 +214,78 @@ export class Squishy {
 
   // ---- touches -------------------------------------------------------
 
+  /**
+   * The rest-shape direction of the surface spot a ray hit, from the hit triangle.
+   * Dents are placed by rest direction, so this stays under the finger however squished it is.
+   */
+  dirAtHit(hit: THREE.Intersection): THREE.Vector3 {
+    const f = hit.face;
+    if (!f) return this.localDir(hit.point);
+    const bc = (hit as THREE.Intersection & { barycoord?: THREE.Vector3 }).barycoord ?? new THREE.Vector3(1 / 3, 1 / 3, 1 / 3);
+    const g = this.grid.dir;
+    const out = new THREE.Vector3();
+    for (const [i, w] of [[f.a, bc.x], [f.b, bc.y], [f.c, bc.z]] as const) {
+      out.x += g[i * 3] * w;
+      out.y += g[i * 3 + 1] * w;
+      out.z += g[i * 3 + 2] * w;
+    }
+    return out.normalize();
+  }
+
+  /** A finger lands on the squishy: it pushes in right there at once. */
+  fingerDown(id: number, dir: THREE.Vector3): void {
+    if (this.mode !== "home") return;
+    this.interacted();
+    const depth = new Spring(320, 17);
+    depth.v = 3.2;
+    this.fingers.set(id, { dir: dir.clone(), depth, t0: this.now, live: true, sliding: false, slow: false });
+  }
+
+  /** The finger moves: the dent slides along under it. */
+  fingerMove(id: number, dir: THREE.Vector3, sliding: boolean): void {
+    const f = this.fingers.get(id);
+    if (!f || !f.live) return;
+    f.dir.lerp(dir, 0.7).normalize();
+    f.sliding = sliding;
+  }
+
+  /** The finger lifts: the dent springs back, slowly after a long squish. */
+  fingerUp(id: number): void {
+    const f = this.fingers.get(id);
+    if (!f || !f.live) return;
+    f.live = false;
+    const held = this.now - f.t0;
+    f.slow = held > 0.45 && !f.sliding;
+    if (f.slow) {
+      f.depth.k = 40;
+      f.depth.c = 30;
+    } else {
+      this.d.waves.push({ x: f.dir.x, y: f.dir.y, z: f.dir.z, age: 0, amp: 0.05 });
+    }
+  }
+
+  private releaseFingers(): void {
+    for (const id of this.fingers.keys()) this.fingerUp(id);
+  }
+
+  private stepFingers(dt: number): void {
+    for (const [id, f] of this.fingers) {
+      if (f.live) {
+        const k = Math.min(1, (this.now - f.t0) / 0.9);
+        // A sliding finger presses lightly; a still one sinks in deeper the longer it stays.
+        f.depth.target = f.sliding ? 0.13 : 0.17 + 0.25 * k;
+      } else {
+        f.depth.target = 0;
+      }
+      const before = f.depth.x;
+      f.depth.step(dt);
+      if (!f.live && f.slow && before > 0.03 && f.depth.x <= 0.03) {
+        this.d.waves.push({ x: f.dir.x, y: f.dir.y, z: f.dir.z, age: 0, amp: 0.035 });
+      }
+      if (!f.live && Math.abs(f.depth.x) < 0.002 && Math.abs(f.depth.v) < 0.02) this.fingers.delete(id);
+    }
+  }
+
   /** Direction from the body center to a world hit point, in body space. */
   localDir(hit: THREE.Vector3): THREE.Vector3 {
     const p = this.mesh.worldToLocal(hit.clone());
@@ -229,9 +312,7 @@ export class Squishy {
     // The spot between the mouth and eyes is the nose: boop it!
     const nose = dir.z > 0.9 && Math.abs(dir.x) < 0.2 && dir.y > -0.35 && dir.y < 0.15;
     this.d.waves.push({ x: dir.x, y: dir.y, z: dir.z, age: 0, amp: 0.07 });
-    this.squash.v += 1.6;
-    this.dentDir.copy(dir);
-    this.dent.v += 2.2;
+    this.squash.v += 0.8;
     if (nose) {
       this.setExpr("surprised", 0.3);
       setTimeout(() => this.setExpr("happy", 0.9), 300);
@@ -263,8 +344,8 @@ export class Squishy {
   pressHold(held: number): void {
     if (!this.pressing) return;
     const k = Math.min(1, (held - 0.15) / 0.8);
-    this.squash.target = 0.12 + 0.36 * k;
-    this.dent.target = 0.1 + 0.2 * k;
+    // The dent under each finger does most of the squish; the whole bun gives a little.
+    this.squash.target = 0.05 + 0.2 * k;
     this.setExpr("squeeze", 0.2);
     if (held > 0.6) this.ev.did("hold");
   }
@@ -336,6 +417,7 @@ export class Squishy {
     if (this.mode !== "home") return;
     this.interacted();
     this.pressing = false;
+    this.releaseFingers();
     this.squash.target = 0;
     this.dent.target = 0;
     this.leanX.target = 0;
@@ -358,8 +440,8 @@ export class Squishy {
     this.interacted();
     this.hugging = true;
     this.pressing = false;
-    this.melt.target = 0.12;
-    this.squash.target = 0.22;
+    this.melt.target = 0.08;
+    this.squash.target = 0.1;
     this.dent.target = 0;
     sfx.squeak(this.pitch * 0.9, 0.3, 0.25);
     this.ev.did("hug");
@@ -438,6 +520,7 @@ export class Squishy {
     const keep = this.squash.target;
     this.squash.target = keep + (this.mode === "home" && !this.pressing ? breath : 0);
     for (const sp of [this.squash, this.dent, this.leanX, this.leanZ, this.melt, this.turn]) sp.step(dt);
+    this.stepFingers(dt);
     this.squash.target = keep;
     if (this.mode !== "fly") this.tilt.step(dt);
     // Hop
@@ -565,7 +648,7 @@ export class Squishy {
   }
 
   private stepIdle(dt: number): void {
-    if (this.pressing || this.hugging || this.mode !== "home") {
+    if (this.pressing || this.hugging || this.fingers.size > 0 || this.mode !== "home") {
       this.idleFor = 0;
       return;
     }
@@ -646,6 +729,12 @@ export class Squishy {
     this.d.leanZ = this.leanZ.x;
     const dd = Math.max(0, this.dent.x);
     this.d.dents = dd > 0.001 ? [{ x: this.dentDir.x, y: this.dentDir.y, z: this.dentDir.z, depth: dd, radius: 0.42 }] : [];
+    for (const f of this.fingers.values()) {
+      const depth = f.depth.x;
+      if (Math.abs(depth) < 0.001) continue;
+      // A fingertip-sized dent that widens a little as it sinks.
+      this.d.dents.push({ x: f.dir.x, y: f.dir.y, z: f.dir.z, depth, radius: 0.26 + 0.35 * Math.max(0, depth) });
+    }
     deform(this.grid, this.d, this.pos);
     const posAttr = this.geo.getAttribute("position") as THREE.BufferAttribute;
     posAttr.needsUpdate = true;
