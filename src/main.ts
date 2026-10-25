@@ -8,6 +8,7 @@ import { buildStage, BASKET_FLOOR, BASKET_WALL } from "./scene";
 import { Effects } from "./fx";
 import { Hud, type ActionId } from "./hud";
 import { lookById } from "./looks";
+import { feelWord } from "./feel";
 import { addLove, loadSave, storeSave } from "./save";
 import * as sfx from "./audio";
 import { BOTTOM_Y } from "./bao";
@@ -68,6 +69,7 @@ hud = new Hud(
       sfx.pop();
       sfx.squeak(look.pitch, 0.14, 0.28);
       fx.emit("sparkle", squishy.topPoint(), 6);
+      hud.toast(feelWord(look.soft));
       storeSave(save);
     },
     toggleSound: () => {

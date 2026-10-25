@@ -6,6 +6,7 @@ import * as THREE from "three";
 import { BOTTOM_Y, CENTER_Y, RINGS, SEG, buildFacePatch, buildGrid, deform, restDeform, vid, type Deform } from "./bao";
 import { drawFace, FACE_H, FACE_W, type Expression } from "./face";
 import type { Look } from "./looks";
+import { feelFor, type Feel } from "./feel";
 import * as sfx from "./audio";
 import { FLY_PLANE_Z } from "./view";
 
@@ -74,6 +75,7 @@ export class Squishy {
   private material!: THREE.MeshPhysicalMaterial;
   private time = { value: 0 };
   private look!: Look;
+  private feel: Feel = feelFor(0.5);
 
   private d: Deform = restDeform();
   private squash = new Spring(150, 7);
@@ -170,6 +172,7 @@ export class Squishy {
 
   setLook(look: Look): void {
     this.look = look;
+    this.feel = feelFor(look.soft);
     const color = new THREE.Color(look.color);
     const base: THREE.MeshPhysicalMaterialParameters = {
       color,
@@ -236,8 +239,9 @@ export class Squishy {
   fingerDown(id: number, dir: THREE.Vector3): void {
     if (this.mode !== "home") return;
     this.interacted();
-    const depth = new Spring(320, 17);
-    depth.v = 3.2;
+    const depth = new Spring(this.feel.dentK, this.feel.dentC);
+    // Land with a quick push so the dent shows at once.
+    depth.v = 3.2 * (this.feel.dentStart / 0.16);
     this.fingers.set(id, { dir: dir.clone(), depth, t0: this.now, live: true, sliding: false, slow: false });
   }
 
@@ -257,10 +261,10 @@ export class Squishy {
     const held = this.now - f.t0;
     f.slow = held > 0.45 && !f.sliding;
     if (f.slow) {
-      f.depth.k = 40;
-      f.depth.c = 30;
+      f.depth.k = this.feel.riseK;
+      f.depth.c = this.feel.riseC;
     } else {
-      this.d.waves.push({ x: f.dir.x, y: f.dir.y, z: f.dir.z, age: 0, amp: 0.05 });
+      this.d.waves.push({ x: f.dir.x, y: f.dir.y, z: f.dir.z, age: 0, amp: this.feel.wave });
     }
   }
 
@@ -273,14 +277,14 @@ export class Squishy {
       if (f.live) {
         const k = Math.min(1, (this.now - f.t0) / 0.9);
         // A sliding finger presses lightly; a still one sinks in deeper the longer it stays.
-        f.depth.target = f.sliding ? 0.13 : 0.17 + 0.25 * k;
+        f.depth.target = f.sliding ? this.feel.slide : this.feel.dentStart + (this.feel.dentMax - this.feel.dentStart) * k;
       } else {
         f.depth.target = 0;
       }
       const before = f.depth.x;
       f.depth.step(dt);
       if (!f.live && f.slow && before > 0.03 && f.depth.x <= 0.03) {
-        this.d.waves.push({ x: f.dir.x, y: f.dir.y, z: f.dir.z, age: 0, amp: 0.035 });
+        this.d.waves.push({ x: f.dir.x, y: f.dir.y, z: f.dir.z, age: 0, amp: this.feel.wave * 0.7 });
       }
       if (!f.live && Math.abs(f.depth.x) < 0.002 && Math.abs(f.depth.v) < 0.02) this.fingers.delete(id);
     }
@@ -345,7 +349,7 @@ export class Squishy {
     if (!this.pressing) return;
     const k = Math.min(1, (held - 0.15) / 0.8);
     // The dent under each finger does most of the squish; the whole bun gives a little.
-    this.squash.target = 0.05 + 0.2 * k;
+    this.squash.target = 0.05 + (this.feel.squashMax - 0.05) * k;
     this.setExpr("squeeze", 0.2);
     if (held > 0.6) this.ev.did("hold");
   }
@@ -356,7 +360,7 @@ export class Squishy {
     this.squash.target = 0;
     this.dent.target = 0;
     // A long squish rises back slowly, like a real slow-rise squishy.
-    this.slowRise = held > 0.45 ? 1.1 : 0;
+    this.slowRise = held > 0.45 ? this.feel.riseTime : 0;
     if (this.slowRise > 0) sfx.sigh(this.pitch);
     else sfx.squeak(this.pitch * 1.1, 0.1, 0.25);
     this.setExpr("happy", 1.2);
@@ -504,16 +508,16 @@ export class Squishy {
       this.slowRise -= dt;
       this.squash.c = 26;
       this.dent.c = 30;
-      this.squash.k = 40;
+      this.squash.k = this.feel.riseK * 2.5;
       this.dent.k = 40;
       if (this.slowRise <= 0) {
         this.squash.v -= 0.6;
         this.d.waves.push({ x: this.dentDir.x, y: this.dentDir.y, z: this.dentDir.z, age: 0, amp: 0.035 });
       }
     } else {
-      this.squash.c = 7;
+      this.squash.c = this.feel.bodyC;
       this.dent.c = 13;
-      this.squash.k = 150;
+      this.squash.k = this.feel.bodyK;
       this.dent.k = 160;
     }
     const breath = this.sleeping ? Math.sin(this.now * 1.3) * 0.03 : Math.sin(this.now * 2.2) * 0.012;
@@ -733,7 +737,7 @@ export class Squishy {
       const depth = f.depth.x;
       if (Math.abs(depth) < 0.001) continue;
       // A fingertip-sized dent that widens a little as it sinks.
-      this.d.dents.push({ x: f.dir.x, y: f.dir.y, z: f.dir.z, depth, radius: 0.26 + 0.35 * Math.max(0, depth) });
+      this.d.dents.push({ x: f.dir.x, y: f.dir.y, z: f.dir.z, depth, radius: this.feel.radius + 0.35 * Math.max(0, depth) });
     }
     deform(this.grid, this.d, this.pos);
     const posAttr = this.geo.getAttribute("position") as THREE.BufferAttribute;
