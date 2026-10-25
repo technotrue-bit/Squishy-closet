@@ -86,7 +86,13 @@ export interface Stage {
   basket: THREE.Group;
   /** Soft shadow that follows the squishy when it leaves the basket. */
   shadow: THREE.Mesh;
+  /** The steamer lid; it rests leaning behind and closes over a new squishy. */
+  lid: THREE.Group;
 }
+
+/** Where the lid leans at rest, and where it sits when closed on the basket. */
+export const LID_REST = { pos: new THREE.Vector3(-0.55, 1.15, -1.55), rot: new THREE.Euler(-1.2, 0, 0.12) };
+export const LID_CLOSED = { pos: new THREE.Vector3(0, 0.4, 0), rot: new THREE.Euler(0, 0, 0) };
 
 export function buildStage(renderer?: THREE.WebGLRenderer): Stage {
   const scene = new THREE.Scene();
@@ -158,9 +164,8 @@ export function buildStage(renderer?: THREE.WebGLRenderer): Stage {
   knob.rotation.z = Math.PI / 2;
   knob.position.y = 0.16;
   lid.add(lidWall, lidTop, lidRim, knob);
-  lid.rotation.x = -1.2;
-  lid.rotation.z = 0.12;
-  lid.position.set(-0.55, 1.15, -1.55);
+  lid.rotation.copy(LID_REST.rot);
+  lid.position.copy(LID_REST.pos);
   basket.add(lid);
 
   const shadowMat = new THREE.MeshBasicMaterial({ map: shadowTex(), transparent: true, depthWrite: false });
@@ -175,5 +180,5 @@ export function buildStage(renderer?: THREE.WebGLRenderer): Stage {
   scene.add(shadow);
 
   scene.add(basket);
-  return { scene, basket, shadow };
+  return { scene, basket, shadow, lid };
 }

@@ -3,10 +3,12 @@
 // look quite the same.
 
 import * as THREE from "three";
-import { BOTTOM_Y, CENTER_Y, RINGS, SEG, buildFacePatch, buildGrid, deform, restDeform, vid, type Deform } from "./bao";
+import { BOTTOM_Y, CENTER_Y, RINGS, SEG, SHAPES, buildFacePatch, buildGrid, faceRowTop, deform, restDeform, vid, type Deform } from "./bao";
 import { drawFace, FACE_H, FACE_W, type Expression } from "./face";
-import type { Look } from "./looks";
+import type { SquishyDef } from "./catalog";
 import { feelFor, type Feel } from "./feel";
+import { buildParts, type PartPin } from "./parts";
+import { drawSkin, SKIN_H, SKIN_W } from "./skin";
 import * as sfx from "./audio";
 import { FLY_PLANE_Z } from "./view";
 
@@ -49,6 +51,19 @@ const RADIUS = 1.05;
 
 type Mode = "home" | "fly" | "dizzy" | "return";
 
+/** An extra (ears, wings, a hat) riding on the surface at one vertex. */
+interface Pinned {
+  pin: PartPin;
+  holder: THREE.Object3D;
+  v: number;
+}
+
+const REF = {
+  forward: new THREE.Vector3(0, 0, 1),
+  up: new THREE.Vector3(0, 1, 0),
+  down: new THREE.Vector3(0, -1, 0),
+};
+
 /** A finger on the squishy: the dent sits right under it and follows it. */
 interface Finger {
   dir: THREE.Vector3;
@@ -66,6 +81,7 @@ export class Squishy {
   private face: THREE.Mesh;
   private grid = buildGrid();
   private patch = buildFacePatch();
+  private faceRow1 = -1;
   private pos: Float32Array;
   private geo: THREE.BufferGeometry;
   private faceGeo: THREE.BufferGeometry;
@@ -74,7 +90,12 @@ export class Squishy {
   private faceTex: THREE.CanvasTexture;
   private material!: THREE.MeshPhysicalMaterial;
   private time = { value: 0 };
-  private look!: Look;
+  private skinCanvas: HTMLCanvasElement | null = null;
+  private skinTex: THREE.CanvasTexture | null = null;
+  private partsGroup = new THREE.Group();
+  private pinned: Pinned[] = [];
+  private glow = false;
+  def!: SquishyDef;
   private feel: Feel = feelFor(0.5);
 
   private d: Deform = restDeform();
@@ -124,7 +145,7 @@ export class Squishy {
   private zzAt = 0;
 
   constructor(
-    look: Look,
+    def: SquishyDef,
     private ev: SquishyEvents,
   ) {
     this.pos = new Float32Array(this.grid.count * 3);
@@ -145,10 +166,7 @@ export class Squishy {
     this.faceTex.colorSpace = THREE.SRGBColorSpace;
     this.faceTex.anisotropy = 4;
     this.faceGeo = new THREE.BufferGeometry();
-    this.faceGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(this.patch.count * 3), 3).setUsage(THREE.DynamicDrawUsage));
-    this.faceGeo.setAttribute("normal", new THREE.BufferAttribute(new Float32Array(this.patch.count * 3), 3).setUsage(THREE.DynamicDrawUsage));
-    this.faceGeo.setAttribute("uv", new THREE.BufferAttribute(this.patch.uv, 2));
-    this.faceGeo.setIndex(new THREE.BufferAttribute(this.patch.index, 1));
+    this.fillFaceGeo();
     this.face = new THREE.Mesh(
       this.faceGeo,
       new THREE.MeshStandardMaterial({
@@ -162,20 +180,60 @@ export class Squishy {
       }),
     );
     this.face.renderOrder = 2;
-    this.body.add(this.mesh, this.face);
+    this.body.add(this.mesh, this.face, this.partsGroup);
     this.body.position.y = BOTTOM_Y; // pivot at the bottom
     this.mesh.position.y = -BOTTOM_Y;
     this.face.position.y = -BOTTOM_Y;
+    this.partsGroup.position.y = -BOTTOM_Y;
     this.group.add(this.body);
-    this.setLook(look);
+    this.setDesign(def);
   }
 
-  setLook(look: Look): void {
-    this.look = look;
-    this.feel = feelFor(look.soft);
-    const color = new THREE.Color(look.color);
+  private fillFaceGeo(): void {
+    const n = this.patch.count;
+    if (this.face) {
+      // A new size of face: swap in fresh buffers rather than resizing live ones.
+      this.faceGeo.dispose();
+      this.faceGeo = new THREE.BufferGeometry();
+      this.face.geometry = this.faceGeo;
+    }
+    this.faceGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(n * 3), 3).setUsage(THREE.DynamicDrawUsage));
+    this.faceGeo.setAttribute("normal", new THREE.BufferAttribute(new Float32Array(n * 3), 3).setUsage(THREE.DynamicDrawUsage));
+    this.faceGeo.setAttribute("uv", new THREE.BufferAttribute(this.patch.uv, 2));
+    this.faceGeo.setIndex(new THREE.BufferAttribute(this.patch.index, 1));
+  }
+
+  /** Becomes another squishy: its body shape, skin, extras, face, finish and feel. */
+  setDesign(def: SquishyDef): void {
+    this.def = def;
+    this.feel = feelFor(def.soft);
+    this.grid = buildGrid(SHAPES[def.body]);
+    deform(this.grid, this.d, this.pos);
+    const row1 = faceRowTop(SHAPES[def.body]);
+    if (row1 !== this.faceRow1) {
+      this.faceRow1 = row1;
+      this.patch = buildFacePatch(row1);
+      this.fillFaceGeo();
+    }
+
+    // Skin: one color, or a painted wrap for candy corn, mummies and pudding.
+    let map: THREE.Texture | null = null;
+    if (def.skin.kind !== "plain") {
+      if (!this.skinCanvas) {
+        this.skinCanvas = document.createElement("canvas");
+        this.skinCanvas.width = SKIN_W;
+        this.skinCanvas.height = SKIN_H;
+        this.skinTex = new THREE.CanvasTexture(this.skinCanvas);
+        this.skinTex.colorSpace = THREE.SRGBColorSpace;
+        this.skinTex.anisotropy = 4;
+      }
+      drawSkin(this.skinCanvas.getContext("2d")!, def.color, def.skin);
+      this.skinTex!.needsUpdate = true;
+      map = this.skinTex;
+    }
     const base: THREE.MeshPhysicalMaterialParameters = {
-      color,
+      color: map ? new THREE.Color(0xffffff) : new THREE.Color(def.color),
+      map,
       roughness: 0.5,
       clearcoat: 0.5,
       clearcoatRoughness: 0.25,
@@ -183,19 +241,44 @@ export class Squishy {
       sheenRoughness: 0.5,
       sheenColor: new THREE.Color(0xffffff),
     };
-    if (look.finish === "matte") Object.assign(base, { roughness: 0.68, clearcoat: 0.2, clearcoatRoughness: 0.5 });
-    if (look.finish === "shiny") Object.assign(base, { roughness: 0.4, clearcoat: 0.85, clearcoatRoughness: 0.14 });
-    if (look.finish === "glitter") Object.assign(base, { roughness: 0.42, metalness: 0.5, clearcoat: 0.75, clearcoatRoughness: 0.2, sheen: 0.2 });
+    const f = def.finish;
+    if (f === "matte") Object.assign(base, { roughness: 0.68, clearcoat: 0.2, clearcoatRoughness: 0.5 });
+    if (f === "shiny") Object.assign(base, { roughness: 0.4, clearcoat: 0.85, clearcoatRoughness: 0.14 });
+    if (f === "glitter") Object.assign(base, { roughness: 0.42, metalness: 0.5, clearcoat: 0.75, clearcoatRoughness: 0.2, sheen: 0.2 });
+    if (f === "gold") Object.assign(base, { roughness: 0.3, metalness: 0.85, clearcoat: 1, clearcoatRoughness: 0.12, sheen: 0 });
+    if (f === "glow") Object.assign(base, { roughness: 0.55, clearcoat: 0.4, emissive: new THREE.Color(def.glow ?? def.color), emissiveIntensity: 0.4 });
+    this.glow = f === "glow";
     this.material?.dispose();
     const m = new THREE.MeshPhysicalMaterial(base);
-    if (look.finish === "glitter") addGlitter(m, this.time, new THREE.Color(look.sparkle ?? "#ffffff"));
+    if (f === "glitter" || f === "gold") addGlitter(m, this.time, new THREE.Color(def.sparkle ?? "#ffffff"));
     this.material = m;
     this.mesh.material = m;
+
+    // Extras, each pinned to the vertex nearest where it belongs.
+    for (const p of this.pinned) disposeTree(p.holder);
+    this.partsGroup.clear();
+    this.pinned = [];
+    const g = this.grid.dir;
+    for (const pin of buildParts(def.parts, def.color)) {
+      let best = 0;
+      let bestDot = -2;
+      for (let k = 0; k < this.grid.count; k++) {
+        const dot = g[k * 3] * pin.dir.x + g[k * 3 + 1] * pin.dir.y + g[k * 3 + 2] * pin.dir.z;
+        if (dot > bestDot) {
+          bestDot = dot;
+          best = k;
+        }
+      }
+      const holder = new THREE.Group();
+      holder.add(pin.obj);
+      this.partsGroup.add(holder);
+      this.pinned.push({ pin, holder, v: best });
+    }
     this.faceKey = "";
   }
 
   get pitch(): number {
-    return this.look.pitch;
+    return this.def.pitch;
   }
 
   get isHome(): boolean {
@@ -460,6 +543,29 @@ export class Squishy {
     this.hop(3.2);
   }
 
+  /** Pops out of a just-opened box: a big surprised hop, then happy. */
+  popIn(): void {
+    this.mode = "home";
+    this.sleeping = false;
+    this.idleFor = 0;
+    this.setExpr("surprised", 0.45);
+    setTimeout(() => this.setExpr("happy", 1.4), 450);
+    this.hopY = 0;
+    this.hopV = 0;
+    this.hop(5.5);
+    this.talk = 1;
+    sfx.boing(this.pitch);
+    sfx.squeak(this.pitch * 1.2, 0.18, 0.32);
+  }
+
+  /** A little hello hop when picked from the shelf. */
+  hello(): void {
+    this.setExpr("happy", 1);
+    this.hop(4);
+    this.talk = 0.8;
+    sfx.squeak(this.pitch * 1.1, 0.14, 0.28);
+  }
+
   lookAt(nx: number, ny: number): void {
     this.lookTX = Math.max(-1, Math.min(1, nx));
     this.lookTY = Math.max(-1, Math.min(1, ny));
@@ -716,10 +822,28 @@ export class Squishy {
       lookY: this.lookY,
       blink,
       talk: this.talk,
-      ink: this.look.ink,
-      blush: this.look.blush,
+      ink: this.def.ink,
+      blush: this.def.blush,
+      extra: this.def.face,
     });
     this.faceTex.needsUpdate = true;
+  }
+
+  /** Moves each extra to its spot on the squished surface, standing along the surface normal. */
+  private placeParts(nrm: Float32Array): void {
+    for (const { pin, holder, v } of this.pinned) {
+      const i = v * 3;
+      _y.set(nrm[i], nrm[i + 1], nrm[i + 2]);
+      const ref = REF[pin.ref];
+      _z.copy(ref).addScaledVector(_y, -ref.dot(_y));
+      if (_z.lengthSq() < 1e-4) _z.set(0, 0, 1).addScaledVector(_y, -_y.z);
+      _z.normalize();
+      _x.crossVectors(_y, _z);
+      _m.makeBasis(_x, _y, _z);
+      holder.quaternion.setFromRotationMatrix(_m);
+      holder.position.set(this.pos[i], this.pos[i + 1], this.pos[i + 2]).addScaledVector(_y, pin.lift);
+      pin.animate?.(pin.obj, this.now);
+    }
   }
 
   private rebuild(): void {
@@ -761,6 +885,8 @@ export class Squishy {
     this.faceGeo.getAttribute("position").needsUpdate = true;
     this.faceGeo.getAttribute("normal").needsUpdate = true;
     this.faceGeo.computeBoundingSphere();
+    this.placeParts(nrm);
+    if (this.glow) this.material.emissiveIntensity = 0.32 + 0.14 * Math.sin(this.now * 2.1);
     // Whole-body motion
     if (this.mode === "home") this.group.position.copy(this.home);
     this.body.position.y = BOTTOM_Y + this.hopY + (this.mode === "home" ? 0 : 0);
@@ -770,6 +896,21 @@ export class Squishy {
     this.body.position.x = Math.sin(roll) * 0.45;
     this.body.position.y += (1 - Math.cos(roll)) * 0.45;
   }
+}
+
+const _x = new THREE.Vector3();
+const _y = new THREE.Vector3();
+const _z = new THREE.Vector3();
+const _m = new THREE.Matrix4();
+
+function disposeTree(o: THREE.Object3D): void {
+  o.traverse((c) => {
+    const mesh = c as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    mesh.geometry.dispose();
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const m of mats) m.dispose();
+  });
 }
 
 /** The seam column is doubled and the poles are many points in one place: share their normals. */

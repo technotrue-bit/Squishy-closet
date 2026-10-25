@@ -6,7 +6,15 @@ import type { Bounds } from "./squishy";
 
 export const FLY_PLANE_Z = 2.4;
 
-export function fitCamera(camera: THREE.PerspectiveCamera, w: number, h: number): void {
+/** Screen height at the bottom kept for the shelf and buttons. */
+export const bottomReserve = (h: number) => Math.round(Math.min(190, h * 0.24));
+
+/**
+ * Frames the basket in the screen above the bottom reserve; the reserve still
+ * shows the tabletop, so the shelf and buttons sit on the table, not on the bun.
+ */
+export function fitCamera(camera: THREE.PerspectiveCamera, w: number, fullH: number): void {
+  const h = fullH - bottomReserve(fullH);
   camera.aspect = w / h;
   const t = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
   const dist = Math.max(1.8 / (t * camera.aspect), 2.6 / t);
@@ -14,6 +22,7 @@ export function fitCamera(camera: THREE.PerspectiveCamera, w: number, h: number)
   const target = new THREE.Vector3(0, 0.95 + (camera.aspect < 0.7 ? 0.9 : 0), 0);
   camera.position.set(0, target.y + Math.sin(tilt) * dist, Math.cos(tilt) * dist);
   camera.lookAt(target);
+  camera.setViewOffset(w, h, 0, 0, w, fullH);
   camera.updateProjectionMatrix();
   camera.updateMatrixWorld();
 }

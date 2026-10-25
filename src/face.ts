@@ -34,6 +34,8 @@ export interface FaceLook {
   /** Ink and blush colors (dark buns get light ink). */
   ink: string;
   blush: string;
+  /** A little extra that makes some squishies their own. */
+  extra?: "fangs" | "stitch" | "boo" | "nose" | "whiskers";
 }
 
 type Ctx = Pick<
@@ -89,7 +91,84 @@ export function drawFace(ctx: Ctx, f: FaceLook): void {
   const lx = f.lookX * 0.018;
   const ly = f.lookY * 0.014;
   for (const s of [-1, 1]) drawEye(ctx, f, s, px(s * EYE_X + lx), py(ly));
-  drawMouth(ctx, f, px(lx * 0.4), py(MOUTH_Y + ly * 0.3));
+  const mx = px(lx * 0.4);
+  const my = py(MOUTH_Y + ly * 0.3);
+  if (f.extra === "boo" && f.expr === "open" && f.talk < 0.15) {
+    // A round little "ooo".
+    ctx.beginPath();
+    ctx.ellipse(mx, my + sy(0.01), sx(0.024), sy(0.03), 0, 0, Math.PI * 2);
+    ctx.fillStyle = "#7a2d3a";
+    ctx.fill();
+    ctx.fillStyle = f.ink;
+  } else drawMouth(ctx, f, mx, my);
+  if (f.extra) drawExtra(ctx, f, mx, my);
+}
+
+function drawExtra(ctx: Ctx, f: FaceLook, mx: number, my: number): void {
+  ctx.fillStyle = f.ink;
+  ctx.strokeStyle = f.ink;
+  switch (f.extra) {
+    case "fangs": {
+      ctx.fillStyle = "#ffffff";
+      ctx.strokeStyle = "rgba(0,0,0,0.25)";
+      ctx.lineWidth = sy(0.004);
+      for (const s of [-1, 1]) {
+        const x = mx + s * sx(0.03);
+        const y = my + sy(0.012);
+        ctx.beginPath();
+        ctx.moveTo(x - sx(0.012), y);
+        ctx.lineTo(x + sx(0.012), y);
+        ctx.lineTo(x, y + sy(0.032));
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
+      break;
+    }
+    case "stitch": {
+      ctx.lineWidth = sy(0.01);
+      const x0 = px(-0.34);
+      const y0 = py(0.13);
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x0 + sx(0.16), y0 - sy(0.05));
+      ctx.stroke();
+      for (let k = 1; k <= 3; k++) {
+        const t = k / 4;
+        const x = x0 + sx(0.16) * t;
+        const y = y0 - sy(0.05) * t;
+        ctx.beginPath();
+        ctx.moveTo(x - sx(0.012), y - sy(0.03));
+        ctx.lineTo(x + sx(0.012), y + sy(0.03));
+        ctx.stroke();
+      }
+      break;
+    }
+    case "nose": {
+      ctx.beginPath();
+      const y = py(-0.015);
+      ctx.moveTo(mx - sx(0.018), y - sy(0.012));
+      ctx.lineTo(mx + sx(0.018), y - sy(0.012));
+      ctx.lineTo(mx, y + sy(0.014));
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case "whiskers": {
+      ctx.lineWidth = sy(0.008);
+      for (const s of [-1, 1]) {
+        for (const k of [-1, 0, 1]) {
+          const x = px(s * (EYE_X + 0.07));
+          const y = py(-0.05 + k * 0.025);
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.lineTo(x + s * sx(0.09), y + k * sy(0.02));
+          ctx.stroke();
+        }
+      }
+      break;
+    }
+  }
 }
 
 function drawEye(ctx: Ctx, f: FaceLook, side: number, x: number, y: number): void {

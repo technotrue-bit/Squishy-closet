@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BOTTOM_Y, buildFacePatch, buildGrid, deform, restDeform, volume } from "./bao";
+import { BOTTOM_Y, DEFAULT_SHAPE, FACE_ROW1, SHAPES, buildFacePatch, buildGrid, deform, faceRowTop, restDeform, volume } from "./bao";
 
 describe("bao body", () => {
   const g = buildGrid();
@@ -58,5 +58,11 @@ describe("bao body", () => {
     }
     expect(overBelow).toBeLessThanOrEqual(1e-6);
     expect(overAbove).toBeGreaterThan(0.1);
+  });
+
+  it("keeps the face the same size on squat and tall bodies", () => {
+    expect(faceRowTop(DEFAULT_SHAPE)).toBe(FACE_ROW1);
+    expect(faceRowTop(SHAPES.pumpkin)).toBeGreaterThan(FACE_ROW1);
+    expect(faceRowTop(SHAPES.drop)).toBeLessThan(FACE_ROW1);
   });
 });

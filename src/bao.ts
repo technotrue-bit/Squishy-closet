@@ -17,9 +17,43 @@ export interface BaoShape {
   twist: number; // radians of swirl at the knot
   dome: number; // top height
   knot: number; // height of the little nub
+  /** How the top narrows: below 1 is round and full, above 1 comes to a point. */
+  topPow: number;
+  /** How the height falls off toward the sides of the top. */
+  domePow: number;
+  /** Grooves running bottom to top, like a pumpkin. */
+  ribs: number;
+  ribDepth: number;
+  /** A wavy skirt flaring out at the bottom, like a little ghost. */
+  hem: number;
+  hemWaves: number;
 }
 
-export const DEFAULT_SHAPE: BaoShape = { pleats: 11, pleatDepth: 0.1, twist: 0.75, dome: 0.84, knot: 0.05 };
+export const DEFAULT_SHAPE: BaoShape = {
+  pleats: 11,
+  pleatDepth: 0.1,
+  twist: 0.75,
+  dome: 0.84,
+  knot: 0.05,
+  topPow: 0.85,
+  domePow: 0.95,
+  ribs: 0,
+  ribDepth: 0,
+  hem: 0,
+  hemWaves: 0,
+};
+
+export type BodyKind = "bao" | "mochi" | "ghost" | "drop" | "pumpkin";
+
+const NO_PLEATS = { pleats: 0, pleatDepth: 0, twist: 0, knot: 0 };
+
+export const SHAPES: Record<BodyKind, BaoShape> = {
+  bao: DEFAULT_SHAPE,
+  mochi: { ...DEFAULT_SHAPE, ...NO_PLEATS, dome: 0.68, topPow: 0.62, domePow: 1.25 },
+  ghost: { ...DEFAULT_SHAPE, ...NO_PLEATS, dome: 1.12, knot: 0.05, topPow: 0.72, domePow: 1.15, hem: 0.13, hemWaves: 7 },
+  drop: { ...DEFAULT_SHAPE, ...NO_PLEATS, dome: 1.22, topPow: 1.55, domePow: 0.85 },
+  pumpkin: { ...DEFAULT_SHAPE, ...NO_PLEATS, dome: 0.66, topPow: 0.7, domePow: 1.35, ribs: 8, ribDepth: 0.075 },
+};
 
 export interface Grid {
   /** Rest positions, xyz per vertex. */
@@ -58,8 +92,8 @@ export function buildGrid(shape: BaoShape = DEFAULT_SHAPE): Grid {
       y = -0.45 * Math.pow(Math.abs(c), 0.5);
     } else {
       // Upper half: a full, slightly pointed dome.
-      r = Math.pow(s, 0.85);
-      y = shape.dome * Math.pow(Math.abs(c), 0.95);
+      r = Math.pow(s, shape.topPow);
+      y = shape.dome * Math.pow(Math.abs(c), shape.domePow);
     }
     const tTop = smooth(0.56, 1.0, v);
     y += shape.knot * smooth(0.9, 1.0, v);
@@ -68,8 +102,16 @@ export function buildGrid(shape: BaoShape = DEFAULT_SHAPE): Grid {
       const th = u * Math.PI * 2;
       // Pleats: folds that deepen toward the top and swirl around the knot.
       // Narrow creases between broad, puffy ridges.
-      const crease = Math.pow(1 - Math.abs(Math.sin((shape.pleats * (th + shape.twist * tTop)) / 2)), 5);
-      const rr = r * (1 - shape.pleatDepth * tTop * crease * (1 - smooth(0.94, 1, v) * 0.8));
+      const crease = shape.pleats > 0 ? Math.pow(1 - Math.abs(Math.sin((shape.pleats * (th + shape.twist * tTop)) / 2)), 5) : 0;
+      let rr = r * (1 - shape.pleatDepth * tTop * crease * (1 - smooth(0.94, 1, v) * 0.8));
+      if (shape.ribs > 0) {
+        const groove = Math.pow(1 - Math.abs(Math.sin((shape.ribs * th) / 2)), 3);
+        rr *= 1 - shape.ribDepth * groove * Math.sin(a);
+      }
+      if (shape.hem > 0) {
+        const skirt = 1 - smooth(0.08, 0.36, v);
+        rr *= 1 + shape.hem * skirt * (0.55 + 0.45 * Math.cos(shape.hemWaves * th));
+      }
       const yy = y - 0.05 * tTop * crease * (1 - smooth(0.9, 1, v));
       const x = rr * Math.sin(th);
       const z = rr * Math.cos(th); // u = 0 faces the camera (+z)
@@ -232,9 +274,21 @@ export interface FacePatch {
   count: number;
 }
 
-export function buildFacePatch(): FacePatch {
+/**
+ * The top row of the face for a body shape. Squat and tall bodies reach the
+ * face's top height at different rows; matching it keeps every face the same
+ * size instead of squishing the eyes on a flat bun.
+ */
+export function faceRowTop(shape: BaoShape): number {
+  const top = (sh: BaoShape, j: number) => sh.dome * Math.pow(Math.abs(Math.cos((j / RINGS) * Math.PI)), sh.domePow);
+  const target = top(DEFAULT_SHAPE, FACE_ROW1);
+  for (let j = RINGS / 2 + 2; j < RINGS - 6; j++) if (top(shape, j) >= target) return j;
+  return RINGS - 6;
+}
+
+export function buildFacePatch(row1 = FACE_ROW1): FacePatch {
   const cols = FACE_COLS * 2 + 1;
-  const rows = FACE_ROW1 - FACE_ROW0 + 1;
+  const rows = row1 - FACE_ROW0 + 1;
   const count = cols * rows;
   const src = new Uint32Array(count);
   const uv = new Float32Array(count * 2);
