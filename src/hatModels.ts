@@ -513,6 +513,73 @@ function pumpkin(): HatModel {
   return { obj: g, animate: (t, c) => (leaf.rotation.z = -1.1 + Math.sin(t * 2) * 0.15 + c.energy * 0.3) };
 }
 
+function beret(): HatModel {
+  const g = new THREE.Group();
+  const top = mesh(new THREE.SphereGeometry(0.32, 32, 14), felt("#e2506a"));
+  top.scale.set(1, 0.32, 1);
+  top.position.set(0.03, 0.07, -0.01);
+  top.rotation.z = -0.14;
+  g.add(top);
+  g.add(mesh(new THREE.TorusGeometry(0.245, 0.03, 8, 36).rotateX(Math.PI / 2), felt("#c23f57"), 0, 0.03, 0));
+  const stalk = mesh(new THREE.CylinderGeometry(0.012, 0.02, 0.07, 8), felt("#c23f57"), 0.03, 0.17, -0.01);
+  g.add(stalk);
+  return { obj: g, animate: (t, c) => (stalk.rotation.z = Math.sin(t * 4) * (0.15 + c.energy * 0.6)) };
+}
+
+function ballCap(): HatModel {
+  const g = new THREE.Group();
+  const blue = mat("#4f8df0", { roughness: 0.6 });
+  const dome = mesh(new THREE.SphereGeometry(0.27, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2), blue);
+  dome.scale.set(1, 0.85, 1);
+  g.add(dome);
+  const brim = mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.025, 32, 1, false, -Math.PI / 2, Math.PI), mat("#ffd84d", { roughness: 0.5 }), 0, 0.02, 0.2);
+  brim.scale.set(1, 1, 0.75);
+  brim.rotation.x = 0.12;
+  g.add(brim);
+  g.add(mesh(new THREE.SphereGeometry(0.03, 12, 8), mat("#ffd84d"), 0, 0.235, 0));
+  // A star on the front.
+  const star = new THREE.Shape();
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * Math.PI * 2 - Math.PI / 2;
+    const r = i % 2 ? 0.025 : 0.06;
+    if (i === 0) star.moveTo(Math.cos(a) * r, -Math.sin(a) * r);
+    else star.lineTo(Math.cos(a) * r, -Math.sin(a) * r);
+  }
+  const badge = mesh(new THREE.ShapeGeometry(star), mat("#ffffff", { side: THREE.DoubleSide }), 0, 0.12, 0.245);
+  badge.rotation.x = -0.45;
+  g.add(badge);
+  return { obj: g, animate: (t) => (badge.rotation.z = Math.sin(t * 1.4) * 0.15) };
+}
+
+function headphones(): HatModel {
+  const g = new THREE.Group();
+  const band = mesh(new THREE.TorusGeometry(0.3, 0.035, 10, 40, Math.PI), mat("#c48cff", { roughness: 0.35, clearcoat: 0.8 }), 0, -0.04, 0);
+  g.add(band);
+  const cups: THREE.Group[] = [];
+  for (const s of [-1, 1]) {
+    const cup = new THREE.Group();
+    const shell = mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.08, 24), mat("#ff8fbf", { roughness: 0.35, clearcoat: 0.8 }));
+    shell.rotation.z = Math.PI / 2;
+    cup.add(shell);
+    const pad = mesh(new THREE.TorusGeometry(0.075, 0.025, 8, 20), felt("#ffffff"), -s * 0.045, 0, 0);
+    pad.rotation.y = Math.PI / 2;
+    cup.add(pad);
+    const note = mesh(new THREE.SphereGeometry(0.03, 10, 8), mat("#ffffff"), s * 0.045, 0, 0);
+    cup.add(note);
+    cup.position.set(s * 0.31, -0.06, 0);
+    g.add(cup);
+    cups.push(cup);
+  }
+  return {
+    obj: g,
+    animate: (t, c) => {
+      // Bopping along to the music.
+      const k = c.sleeping ? 0 : 0.04 + c.energy * 0.05;
+      cups.forEach((cup, i) => (cup.scale.setScalar(1 + Math.max(0, Math.sin(t * 7 + i * Math.PI)) * k)));
+    },
+  };
+}
+
 const BUILDERS: Record<string, () => HatModel> = {
   party,
   bow,
@@ -532,6 +599,9 @@ const BUILDERS: Record<string, () => HatModel> = {
   frog,
   witch,
   pumpkin,
+  beret,
+  ballCap,
+  headphones,
 };
 
 export function buildHat(id: string): HatModel | null {

@@ -4,9 +4,11 @@
 import { defById } from "./catalog";
 import { hatById } from "./hats";
 import { PLACE_IDS, type PlaceId } from "./places";
+import { catalogMood, isMood, type MoodId } from "./personality";
+import { BABIES_MAX, cleanBaby, COOKIES_MAX, growLeft, moodOf, type Baby } from "./babies";
 
 export const SAVE_KEY = "squishycloset.save";
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 /** Squishies out at once: the one you hold and up to three friends. */
 export const TEAM_MAX = 3;
 export const ZOOM_MIN = 0.85;
@@ -22,6 +24,10 @@ export interface Owned {
   got: number;
   /** The hat it wears. */
   hat?: string;
+  /** Its personality. */
+  mood: MoodId;
+  /** It grew up from a baby you raised. */
+  raised?: boolean;
 }
 
 export interface Save {
@@ -51,6 +57,10 @@ export interface Save {
   zoom: number;
   /** One-time tips already shown. */
   seen: string[];
+  /** Cookies, for keeping baby squishies. */
+  cookies: number;
+  /** Babies you're raising. */
+  babies: Baby[];
 }
 
 export const freshSave = (): Save => ({
@@ -69,6 +79,8 @@ export const freshSave = (): Save => ({
   jobs: {},
   zoom: 1,
   seen: [],
+  cookies: 1,
+  babies: [],
 });
 
 const strings = (a: unknown): string[] => (Array.isArray(a) ? a.filter((t): t is string => typeof t === "string") : []);
@@ -105,7 +117,9 @@ export function parseSave(raw: string | null): Save {
     const rec = o as Record<string, unknown>;
     const name = typeof rec.name === "string" ? cleanName(rec.name) : "";
     const hat = typeof rec.hat === "string" && hatById(rec.hat) ? rec.hat : "";
-    out.owned[id] = { got: count(rec.got), ...(name ? { name } : {}), ...(hat ? { hat } : {}) };
+    // Squishies from before personalities keep the one on their design.
+    const mood = isMood(rec.mood) ? rec.mood : catalogMood(defById(id)!.personality);
+    out.owned[id] = { got: count(rec.got), mood, ...(name ? { name } : {}), ...(hat ? { hat } : {}), ...(rec.raised === true ? { raised: true } : {}) };
   }
   out.active = typeof s.active === "string" && out.owned[s.active] ? s.active : (Object.keys(out.owned)[0] ?? null);
   out.tutorial = s.tutorial === "done" ? "done" : strings(s.tutorial);
@@ -116,6 +130,13 @@ export function parseSave(raw: string | null): Save {
   for (const p of PLACE_IDS) if (count(jobs[p]) > 0) out.jobs[p] = count(jobs[p]);
   out.zoom = typeof s.zoom === "number" && s.zoom >= ZOOM_MIN && s.zoom <= ZOOM_MAX ? s.zoom : 1;
   out.seen = strings(s.seen);
+  // Everyone starts with a cookie for their first baby.
+  out.cookies = s.v === 4 || (typeof s.v === "number" && s.v > 4) ? Math.min(COOKIES_MAX, count(s.cookies)) : 1;
+  const babies = Array.isArray(s.babies) ? s.babies : [];
+  for (const b of babies) {
+    const baby = cleanBaby(b, (id) => !!defById(id), cleanName);
+    if (baby && out.babies.length < BABIES_MAX && !out.babies.some((o) => o.key === baby.key)) out.babies.push(baby);
+  }
   if (s.v === 2) {
     // New in this update: friends play together, so bring the newest ones out.
     out.team = Object.keys(out.owned)
@@ -157,13 +178,61 @@ export function addLove(s: Save, amount: number): number {
 }
 
 /** Puts a squishy from a box into the collection. A repeat becomes Squish Stars. */
-export function collect(s: Save, id: string, now: number): { isNew: boolean; stars: number } {
+export function collect(s: Save, id: string, now: number, mood: MoodId): { isNew: boolean; stars: number } {
   if (s.owned[id]) {
     s.stars += 5;
     return { isNew: false, stars: 5 };
   }
-  s.owned[id] = { got: now };
+  s.owned[id] = { got: now, mood };
   return { isNew: true, stars: 0 };
+}
+
+export function addCookie(s: Save, n = 1): boolean {
+  if (s.cookies >= COOKIES_MAX) return false;
+  s.cookies = Math.min(COOKIES_MAX, s.cookies + n);
+  return true;
+}
+
+/** Keeps a baby you found, for a cookie. */
+export function keepBaby(s: Save, baby: Baby): boolean {
+  if (s.cookies < 1 || s.babies.length >= BABIES_MAX) return false;
+  s.cookies -= 1;
+  s.babies.push(baby);
+  return true;
+}
+
+export interface GrownUp {
+  baby: Baby;
+  mood: MoodId;
+  /** You already had this squishy: the one you raised joins it. */
+  joined: boolean;
+}
+
+/** Babies a week old grow up into their squishy, with the personality you gave them. */
+export function growUp(s: Save, now: number): GrownUp[] {
+  const out: GrownUp[] = [];
+  s.babies = s.babies.filter((b) => {
+    if (growLeft(b, now) > 0) return true;
+    const mood = moodOf(b);
+    const had = s.owned[b.kind];
+    if (had) {
+      had.mood = mood;
+      had.raised = true;
+      if (b.name && !had.name) had.name = b.name;
+      s.stars += 5;
+    } else {
+      s.owned[b.kind] = { got: now, mood, raised: true, ...(b.name ? { name: b.name } : {}) };
+      if (!s.active) s.active = b.kind;
+      else if (s.team.length < TEAM_MAX) s.team.push(b.kind);
+    }
+    out.push({ baby: b, mood, joined: !!had });
+    return false;
+  });
+  return out;
+}
+
+export function babyName(b: Baby): string {
+  return b.name || `Baby ${defById(b.kind)?.name ?? "Squishy"}`;
 }
 
 /**

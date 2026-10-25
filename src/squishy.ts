@@ -11,6 +11,7 @@ import { buildParts, type PartPin } from "./parts";
 import { buildHat, type HatCtx, type HatModel } from "./hatModels";
 import { drawSkin, SKIN_H, SKIN_W } from "./skin";
 import * as sfx from "./audio";
+import { MOODS, type Mood } from "./personality";
 import { FLY_PLANE_Z } from "./view";
 
 class Spring {
@@ -28,7 +29,7 @@ class Spring {
   }
 }
 
-export type Fx = "heart" | "sparkle" | "star" | "zz" | "note" | "glimmer";
+export type Fx = "heart" | "sparkle" | "star" | "zz" | "note" | "glimmer" | "splash";
 
 export interface Bounds {
   minX: number;
@@ -130,6 +131,8 @@ export class Squishy {
   cheapSquash = 0.08;
   /** The geometry holds the plain resting shape (no dents, waves or lean). */
   private atRest = false;
+  /** Who it is inside: how it fidgets, naps, hops and sounds. */
+  mood: Mood = MOODS[0];
   /** Which way it faces (radians about up); friends turn to look at things. */
   yawTarget = 0;
   private yaw = 0;
@@ -363,8 +366,11 @@ export class Squishy {
     this.faceKey = "";
   }
 
+  /** Babies have little high voices. */
+  voiceMul = 1;
+
   get pitch(): number {
-    return this.def.pitch;
+    return this.def.pitch * this.mood.voice * this.voiceMul;
   }
 
   get isHome(): boolean {
@@ -601,7 +607,7 @@ export class Squishy {
       this.ev.fx("sparkle", this.topPoint(), 5);
     } else {
       this.setExpr(Math.random() < 0.5 ? "surprised" : "squeeze", 0.25);
-      setTimeout(() => this.setExpr("happy", 0.5), 260);
+      setTimeout(() => this.setExpr(Math.random() < 0.4 ? this.mood.face : "happy", 0.6), 260);
       sfx.squeak(this.pitch * (0.95 + Math.random() * 0.15), 0.12, 0.3);
       this.ev.love(1);
     }
@@ -782,7 +788,7 @@ export class Squishy {
     if (this.hopY > 0.01) return;
     this.squash.v += 2; // crouch first
     setTimeout(() => {
-      this.hopV = v;
+      this.hopV = v * (0.7 + this.mood.hop * 0.3);
       this.squash.v -= 2.5;
     }, 90);
   }
@@ -981,21 +987,22 @@ export class Squishy {
     }
     if (!this.autoSleep) {
       this.idleFor = Math.min(this.idleFor, 20);
-    } else if (this.idleFor > 24 && this.idleFor - dt <= 24) {
+    } else if (this.idleFor > this.mood.sleepAfter && this.idleFor - dt <= this.mood.sleepAfter) {
       this.setExpr("sleepy", 1.6);
       this.talk = 1;
       sfx.yawn(this.pitch);
     }
-    if (this.autoSleep && this.idleFor > 26) {
+    if (this.autoSleep && this.idleFor > this.mood.sleepAfter + 2) {
       this.sleeping = true;
       this.zzAt = this.now + 0.5;
       return;
     }
     this.nextFidget -= dt;
     if (this.nextFidget <= 0) {
-      this.nextFidget = 5 + Math.random() * 5;
+      this.nextFidget = this.mood.fidget * (1 + Math.random());
       const r = Math.random();
-      if (r < 0.35) this.turn.v += (Math.random() < 0.5 ? -1 : 1) * 3.5;
+      if (r < 0.3) this.quirk();
+      else if (r < 0.5) this.turn.v += (Math.random() < 0.5 ? -1 : 1) * 3.5;
       else if (r < 0.6) {
         this.hop(3.4);
         sfx.squeak(this.pitch * 1.2, 0.07, 0.15);
@@ -1003,6 +1010,60 @@ export class Squishy {
         this.lookTX = Math.random() * 2 - 1;
         this.lookTY = Math.random() - 0.5;
       }
+    }
+  }
+
+  /** Does the little thing that shows who it is. */
+  quirk(): void {
+    const m = this.mood;
+    this.setExpr(m.face, 1.4);
+    switch (m.quirk) {
+      case "bounce":
+        this.hop(4);
+        setTimeout(() => this.hop(3.6), 520);
+        sfx.squeak(this.pitch * 1.25, 0.07, 0.15);
+        break;
+      case "spin":
+        this.turn.v += (Math.random() < 0.5 ? -1 : 1) * 9;
+        this.hop(3.4);
+        sfx.giggle(this.pitch);
+        break;
+      case "sing":
+        this.talk = 1;
+        sfx.hum(this.pitch);
+        this.ev.fx("note", this.topPoint(), 2);
+        break;
+      case "look":
+        this.lookTX = Math.random() < 0.5 ? -1 : 1;
+        this.lookTY = 0.4;
+        setTimeout(() => (this.lookTX = -this.lookTX), 700);
+        sfx.squeak(this.pitch * 1.3, 0.06, 0.12);
+        break;
+      case "stretch":
+        this.squash.v -= 3;
+        this.talk = 1;
+        sfx.yawn(this.pitch);
+        break;
+      case "wiggle":
+        this.wiggle();
+        setTimeout(() => this.wiggle(), 260);
+        break;
+      case "blush":
+        this.lookTY = -0.6;
+        this.squash.v += 1.2;
+        break;
+      case "pout":
+        this.turn.v += (Math.random() < 0.5 ? -1 : 1) * 2.5;
+        sfx.sigh(this.pitch);
+        break;
+      case "puff":
+        this.squash.v -= 4;
+        this.hop(3.8);
+        break;
+      case "dream":
+        this.lookTY = 1;
+        this.ev.fx("glimmer", this.topPoint(), 3);
+        break;
     }
   }
 

@@ -12,7 +12,11 @@ export type Expression =
   | "dizzy"
   | "love"
   | "sleepy"
-  | "giggle";
+  | "giggle"
+  /** Grumbly: little cross brows and a tiny frown. */
+  | "pout"
+  /** Bashful: half-shut eyes looking down and extra pink cheeks. */
+  | "shy";
 
 export const FACE_W = 1024;
 export const FACE_H = 512;
@@ -78,18 +82,19 @@ export function drawFace(ctx: Ctx, f: FaceLook): void {
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   // Blush first so the eyes sit on top.
-  ctx.globalAlpha = f.expr === "love" || f.expr === "giggle" || f.expr === "happy" ? 0.85 : 0.62;
+  const shy = f.expr === "shy";
+  ctx.globalAlpha = shy ? 1 : f.expr === "love" || f.expr === "giggle" || f.expr === "happy" ? 0.85 : 0.62;
   ctx.fillStyle = f.blush;
   for (const s of [-1, 1]) {
     ctx.beginPath();
-    ctx.ellipse(px(s * (EYE_X + 0.035)), py(-0.075), sx(0.06), sy(0.034), 0, 0, Math.PI * 2);
+    ctx.ellipse(px(s * (EYE_X + 0.035)), py(-0.075), sx(shy ? 0.075 : 0.06), sy(shy ? 0.042 : 0.034), 0, 0, Math.PI * 2);
     ctx.fill();
   }
   ctx.globalAlpha = 1;
   ctx.fillStyle = f.ink;
   ctx.strokeStyle = f.ink;
   const lx = f.lookX * 0.018;
-  const ly = f.lookY * 0.014;
+  const ly = (shy ? -0.8 : f.lookY) * 0.014;
   for (const s of [-1, 1]) drawEye(ctx, f, s, px(s * EYE_X + lx), py(ly));
   const mx = px(lx * 0.4);
   const my = py(MOUTH_Y + ly * 0.3);
@@ -175,7 +180,7 @@ function drawEye(ctx: Ctx, f: FaceLook, side: number, x: number, y: number): voi
   const w = sx(EYE_R);
   const h = sy(EYE_R * 1.12);
   ctx.lineWidth = sy(0.022);
-  const blink = f.expr === "open" || f.expr === "surprised" ? f.blink : 0;
+  const blink = f.expr === "open" || f.expr === "surprised" || f.expr === "pout" ? f.blink : f.expr === "shy" ? Math.max(0.42, f.blink) : 0;
   switch (f.expr) {
     case "happy":
     case "giggle": {
@@ -244,6 +249,14 @@ function drawEye(ctx: Ctx, f: FaceLook, side: number, x: number, y: number): voi
       ctx.ellipse(x + w * 0.38 * big, y + h * 0.36 * big * open, w * 0.14 * big, h * 0.13 * big * open, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = f.ink;
+      if (f.expr === "pout") {
+        // Cross little brows, tipped down toward the middle.
+        ctx.lineWidth = sy(0.016);
+        ctx.beginPath();
+        ctx.moveTo(x - side * w * 1.2, y - h * 1.75);
+        ctx.lineTo(x + side * w * 0.9, y - h * 1.3);
+        ctx.stroke();
+      }
     }
   }
 }
@@ -284,6 +297,14 @@ function drawMouth(ctx: Ctx, f: FaceLook, x: number, y: number): void {
     ctx.fillStyle = "#ff8fa3";
     ctx.fill();
     ctx.fillStyle = f.ink;
+    return;
+  }
+  if (f.expr === "pout") {
+    // A tiny frown.
+    ctx.beginPath();
+    ctx.moveTo(x - w * 0.7, y + h * 0.35);
+    ctx.quadraticCurveTo(x, y - h * 0.45, x + w * 0.7, y + h * 0.35);
+    ctx.stroke();
     return;
   }
   // The cat mouth: a tiny w.

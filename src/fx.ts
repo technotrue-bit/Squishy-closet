@@ -70,6 +70,15 @@ const textures: Record<Fx, () => THREE.CanvasTexture> = {
       c.fillStyle = g;
       c.fillRect(0, 0, 128, 128);
     }),
+  splash: () =>
+    makeTexture((c) => {
+      const g = c.createRadialGradient(56, 56, 0, 64, 64, 58);
+      g.addColorStop(0, "rgba(255,255,255,1)");
+      g.addColorStop(0.45, "rgba(214,244,255,0.9)");
+      g.addColorStop(1, "rgba(150,215,255,0)");
+      c.fillStyle = g;
+      c.fillRect(0, 0, 128, 128);
+    }),
   star: () =>
     makeTexture((c) => {
       starPath(c, 64, 64, 54, 0.45, 5);
@@ -145,11 +154,14 @@ export class Effects {
             ? new THREE.Vector3(0.35, 0.55, 0)
             : kind === "glimmer"
               ? new THREE.Vector3((Math.random() - 0.5) * 0.5, 0.25 + Math.random() * 0.35, 0.1)
-              : new THREE.Vector3((Math.random() - 0.5) * 1.2, 1.2 + Math.random() * 0.8, 0.2);
+              : kind === "splash"
+                ? new THREE.Vector3((Math.random() - 0.5) * 2.2, 2 + Math.random() * 1.4, (Math.random() - 0.5) * 1.4)
+                : new THREE.Vector3((Math.random() - 0.5) * 1.2, 1.2 + Math.random() * 0.8, 0.2);
       if (kind === "glimmer") sprite.position.add(new THREE.Vector3((Math.random() - 0.5) * 1.2, (Math.random() - 0.3) * 0.9, 0.2));
-      const size = kind === "sparkle" ? 0.26 + Math.random() * 0.16 : kind === "glimmer" ? 0.12 + Math.random() * 0.12 : kind === "zz" ? 0.36 : 0.32 + Math.random() * 0.12;
-      const life = kind === "zz" ? 2.2 : kind === "star" ? 1.5 : kind === "glimmer" ? 2.4 + Math.random() * 1.4 : 1.3;
-      this.live.push({ sprite, vel, age: 0, life, size, kind, spin: kind === "glimmer" ? 0 : (Math.random() - 0.5) * 3 });
+      const size =
+        kind === "sparkle" ? 0.26 + Math.random() * 0.16 : kind === "glimmer" ? 0.12 + Math.random() * 0.12 : kind === "splash" ? 0.14 + Math.random() * 0.1 : kind === "zz" ? 0.36 : 0.32 + Math.random() * 0.12;
+      const life = kind === "zz" ? 2.2 : kind === "star" ? 1.5 : kind === "glimmer" ? 2.4 + Math.random() * 1.4 : kind === "splash" ? 0.75 : 1.3;
+      this.live.push({ sprite, vel, age: 0, life, size, kind, spin: kind === "glimmer" || kind === "splash" ? 0 : (Math.random() - 0.5) * 3 });
       this.group.add(sprite);
     }
   }
@@ -162,7 +174,8 @@ export class Effects {
       if (p.kind === "star") {
         p.vel.multiplyScalar(Math.pow(0.2, dt));
         p.vel.y -= dt * 0.4;
-      } else if (p.kind !== "glimmer") p.vel.multiplyScalar(Math.pow(0.5, dt));
+      } else if (p.kind === "splash") p.vel.y -= dt * 9;
+      else if (p.kind !== "glimmer") p.vel.multiplyScalar(Math.pow(0.5, dt));
       if (p.kind === "heart" || p.kind === "note") p.sprite.position.x += Math.sin(p.age * 7) * dt * 0.3;
       const pop = Math.min(1, p.age * 8);
       const s = p.size * (0.4 + 0.6 * pop) * (p.kind === "zz" ? 0.6 + t * 0.8 : 1);

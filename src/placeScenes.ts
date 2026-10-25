@@ -1,5 +1,5 @@
 // The 3D places behind your squishy: the tea table, a sunny beach, a sailing
-// boat and a living room. Each has spots where friends do jobs (the prop at a
+// boat, a living room and a little city. Each has spots where friends do jobs (the prop at a
 // spot shows how far along the job is), spots to wander to, and its own sky.
 // Your squishy sits in front; its own box sits at the back of every place.
 
@@ -16,6 +16,14 @@ export interface JobSpot {
   show(k: number, working: boolean, t: number, dt: number): void;
 }
 
+export interface VisitPath {
+  how: "swim" | "walk" | "hop";
+  from: THREE.Vector3;
+  to: THREE.Vector3;
+  /** The water's surface, for swimmers. */
+  water?: number;
+}
+
 export interface PlaceScene {
   id: PlaceId;
   group: THREE.Group;
@@ -28,6 +36,8 @@ export interface PlaceScene {
   wander: THREE.Vector3[];
   /** Where your squishy's own box sits, at the back. */
   box: { at: THREE.Vector3; yaw: number };
+  /** Ways other squishies pass by: swimming in the sea, walking or hopping along. */
+  paths: VisitPath[];
   update(dt: number, t: number): void;
   /** The view rocks gently on the boat. */
   sway(t: number): { roll: number; bob: number };
@@ -236,6 +246,10 @@ function buildTable(): PlaceScene {
     spots,
     wander: [V(-1.4, -3.8), V(2.6, -4.8), V(-2.8, -5.2), V(0, -6.2), V(-0.7, -2.2)],
     box: { at: V(1.1, -3.4), yaw: -0.25 },
+    paths: [
+      { how: "hop", from: V(-9, -6.6), to: V(9, -6.6) },
+      { how: "walk", from: V(-10, -9.2), to: V(10, -9.2) },
+    ],
     update: () => {},
     sway: () => ({ roll: 0, bob: 0 }),
   };
@@ -481,6 +495,11 @@ function buildBeach(): PlaceScene {
     spots,
     wander: [V(0.3, -3.0), V(1.2, -4.0), V(-2.9, -4.8), V(-1.0, -5.6), V(2.0, -5.6)],
     box: { at: V(-1.2, -3.9), yaw: 0.25 },
+    paths: [
+      { how: "swim", from: V(-10, -10), to: V(10, -10), water: -0.02 },
+      { how: "swim", from: V(-12, -14.5), to: V(12, -14.5), water: -0.02 },
+      { how: "walk", from: V(-9, -6.1), to: V(9, -6.1) },
+    ],
     update: (dt, t) => {
       seaTex.offset.y = (t * 0.03) % 1;
       seaTex.offset.x = Math.sin(t * 0.3) * 0.02;
@@ -733,6 +752,10 @@ function buildBoat(): PlaceScene {
     spots,
     wander: [V(-0.6, -3.4), V(1.4, -4.4), V(-2.6, -6.8), V(2.0, -6.6), V(0.4, -9.0)],
     box: { at: V(1.0, -3.2), yaw: -0.25 },
+    paths: [
+      { how: "swim", from: V(-11, -14.5), to: V(11, -14.5), water: -0.9 },
+      { how: "swim", from: V(-13, -19), to: V(13, -19), water: -0.9 },
+    ],
     update: (dt, t) => {
       // The sea slides past as we sail.
       seaTex.offset.x = (t * 0.05) % 1;
@@ -960,6 +983,7 @@ function buildRoom(): PlaceScene {
     spots,
     wander: [V(0.4, -3.0), V(-1.6, -5.4), V(0.6, -5.6), V(-2.9, -4.6), V(2.0, -3.6)],
     box: { at: V(-1.1, -3.6), yaw: 0.25 },
+    paths: [{ how: "walk", from: V(-9, -6.1), to: V(9, -6.1) }],
     update: (_dt, t) => {
       cloud.position.x = -0.5 + Math.sin(t * 0.1) * 0.8;
     },
@@ -967,7 +991,290 @@ function buildRoom(): PlaceScene {
   };
 }
 
-const BUILD: Record<PlaceId, () => PlaceScene> = { table: buildTable, beach: buildBeach, boat: buildBoat, room: buildRoom };
+// ---- the little city -------------------------------------------------------
+
+/** A cute rounded car (or the bus) that drives along the street. */
+function car(color: string, long = false): THREE.Group {
+  const c = new THREE.Group();
+  const len = long ? 3.4 : 1.7;
+  const body = add(c, new THREE.CapsuleGeometry(0.42, len - 0.84, 6, 16).rotateZ(Math.PI / 2), std(color, { roughness: 0.35, metalness: 0.05 }), 0, 0.62, 0);
+  body.scale.set(1, long ? 1.25 : 1, 1.15);
+  const glass = std("#cfefff", { roughness: 0.1, metalness: 0.2 });
+  if (long) for (let i = 0; i < 4; i++) add(c, new THREE.BoxGeometry(0.46, 0.3, 1.0), glass, -1.05 + i * 0.7, 0.92, 0);
+  else {
+    const cab = add(c, new THREE.SphereGeometry(0.42, 18, 12, 0, Math.PI * 2, 0, Math.PI / 2), glass, -0.05, 0.86, 0);
+    cab.scale.set(1.2, 0.8, 1.05);
+  }
+  const tire = std("#4a4458", { roughness: 0.8 });
+  for (const x of long ? [-1.2, 1.2] : [-0.55, 0.55]) for (const z of [-0.45, 0.45]) add(c, new THREE.CylinderGeometry(0.22, 0.22, 0.14, 16).rotateX(Math.PI / 2), tire, x, 0.22, z);
+  add(c, new THREE.SphereGeometry(0.08, 10, 8), std("#fff6b0", { emissive: new THREE.Color("#fff1a0"), emissiveIntensity: 0.6 }), len / 2 - 0.05, 0.6, 0.3);
+  return c;
+}
+
+function buildCity(): PlaceScene {
+  const g = new THREE.Group();
+  // The plaza where everyone plays, then the curb, the street and the far sidewalk.
+  const paverTex = canvasTex(256, 256, (c) => {
+    c.fillStyle = "#e6cfe0";
+    c.fillRect(0, 0, 256, 256);
+    for (let y = 0; y < 256; y += 32)
+      for (let x = (y / 32) % 2 ? -32 : 0; x < 256; x += 64) {
+        c.fillStyle = (x + y) % 128 ? "#f8e8f1" : "#efd9e8";
+        c.fillRect(x + 2, y + 2, 60, 28);
+      }
+  });
+  paverTex.wrapT = THREE.RepeatWrapping;
+  paverTex.repeat.set(8, 3.2);
+  const plaza = add(g, new THREE.PlaneGeometry(40, 12), std("#ffffff", { map: paverTex, roughness: 0.9 }), 0, 0, 0.6);
+  plaza.rotation.x = -Math.PI / 2;
+  add(g, new THREE.BoxGeometry(40, 0.16, 0.3), std("#e9dff0"), 0, 0.02, -5.4);
+  const roadTex = canvasTex(256, 128, (c) => {
+    c.fillStyle = "#b9b3cc";
+    c.fillRect(0, 0, 256, 128);
+    c.fillStyle = "#fff3a8";
+    for (let x = 0; x < 256; x += 64) c.fillRect(x, 61, 36, 6);
+  });
+  roadTex.repeat.set(5, 1);
+  const road = add(g, new THREE.PlaneGeometry(40, 4.2), std("#ffffff", { map: roadTex, roughness: 0.85 }), 0, -0.04, -7.55);
+  road.rotation.x = -Math.PI / 2;
+  // The crosswalk.
+  for (let i = 0; i < 6; i++) {
+    const st = add(g, new THREE.PlaneGeometry(0.34, 3.8), std("#ffffff", { roughness: 0.8 }), -0.85 + i * 0.6, -0.03, -7.55);
+    st.rotation.x = -Math.PI / 2;
+  }
+  add(g, new THREE.BoxGeometry(40, 0.16, 0.3), std("#e9dff0"), 0, 0.02, -9.7);
+  const far = add(g, new THREE.PlaneGeometry(40, 3), std("#ffffff", { map: paverTex, roughness: 0.9 }), 0, 0, -11.2);
+  far.rotation.x = -Math.PI / 2;
+  // A row of pastel shops and houses.
+  const winTex = canvasTex(128, 128, (c) => {
+    c.clearRect(0, 0, 128, 128);
+    c.fillStyle = "#ffffff";
+    c.fillRect(22, 18, 34, 40);
+    c.fillRect(72, 18, 34, 40);
+    c.fillStyle = "#bfe6ff";
+    c.fillRect(26, 22, 26, 32);
+    c.fillRect(76, 22, 26, 32);
+    c.fillStyle = "rgba(255,255,255,0.8)";
+    c.fillRect(28, 24, 6, 18);
+    c.fillRect(78, 24, 6, 18);
+  });
+  const houses = ["#ffc6df", "#c9e7a6", "#ffe0a8", "#c9b8ff", "#a8e0ff", "#ffb8a8", "#d8f2c4", "#ffd6f0"];
+  let x = -15;
+  let i = 0;
+  while (x < 15) {
+    const w = 2.6 + ((i * 7) % 5) * 0.25;
+    const h = 3.8 + ((i * 5) % 4) * 1.1;
+    const b = new THREE.Group();
+    add(b, new THREE.BoxGeometry(w, h, 2), std(houses[i % houses.length], { roughness: 0.8 }), 0, h / 2, 0);
+    const wt = winTex.clone();
+    wt.needsUpdate = true;
+    wt.wrapS = wt.wrapT = THREE.RepeatWrapping;
+    wt.repeat.set(Math.max(1, Math.round(w / 1.3)), Math.max(1, Math.round((h - 1.4) / 1.3)));
+    add(b, new THREE.PlaneGeometry(w - 0.3, h - 1.4), new THREE.MeshStandardMaterial({ map: wt, transparent: true, roughness: 0.6 }), 0, h / 2 + 0.55, 1.01);
+    add(b, new THREE.BoxGeometry(0.7, 1.1, 0.1), std("#ffffff"), (i % 2 ? 0.5 : -0.5) * (w / 3), 0.55, 1.02);
+    // Striped awnings on some.
+    if (i % 3 !== 1) {
+      const aw = add(b, new THREE.CylinderGeometry(0.35, 0.35, w - 0.2, 16, 1, false, 0, Math.PI), std(i % 2 ? "#ff8fbf" : "#7fc8f0", { roughness: 0.7, side: THREE.DoubleSide }), 0, 1.45, 1.05);
+      aw.rotation.z = Math.PI / 2;
+    }
+    add(b, new THREE.BoxGeometry(w + 0.12, 0.16, 2.12), std("#ffffff"), 0, h, 0);
+    b.position.set(x + w / 2, 0, -13.6 - ((i * 3) % 2) * 0.4);
+    g.add(b);
+    x += w + 0.15;
+    i++;
+  }
+  // Trees in round planters and street lamps.
+  const leafMat = std("#8fd27a", { roughness: 0.8 });
+  const potMat = std("#ffffff", { roughness: 0.6 });
+  for (const [tx, tz] of [[-6.2, -4.8], [6.0, -4.8], [-9.5, -11], [-3.5, -11], [3, -11], [9, -11]]) {
+    const t = new THREE.Group();
+    add(t, new THREE.CylinderGeometry(0.42, 0.34, 0.5, 18), potMat, 0, 0.25, 0);
+    add(t, new THREE.CylinderGeometry(0.07, 0.09, 1.3, 8), std("#c98d58"), 0, 1.1, 0);
+    for (const [bx, by, bz, r] of [[0, 2.0, 0, 0.62], [0.35, 1.75, 0.1, 0.42], [-0.32, 1.8, 0, 0.45]]) add(t, new THREE.SphereGeometry(r, 16, 12), leafMat, bx, by, bz);
+    t.position.set(tx, 0, tz);
+    g.add(t);
+  }
+  for (const lx of [-8, 8]) {
+    const l = new THREE.Group();
+    add(l, new THREE.CylinderGeometry(0.06, 0.08, 3.2, 8), std("#9a8ab8"), 0, 1.6, 0);
+    add(l, new THREE.SphereGeometry(0.24, 14, 10), std("#fff6c8", { emissive: new THREE.Color("#ffefa0"), emissiveIntensity: 0.5 }), 0, 3.3, 0);
+    l.position.set(lx, 0, -5.0);
+    g.add(l);
+  }
+  // Traffic: two little cars and a bus, gently going by.
+  const traffic = [
+    { m: car("#ff8fbf"), lane: -6.6, dir: 1, speed: 2.6, at: -6 },
+    { m: car("#7fc8f0"), lane: -8.5, dir: -1, speed: 2.2, at: 9 },
+    { m: car("#ffd84d", true), lane: -6.6, dir: 1, speed: 1.8, at: -30 },
+  ];
+  for (const c of traffic) {
+    c.m.rotation.y = c.dir > 0 ? 0 : Math.PI;
+    c.m.position.set(c.at, 0, c.lane);
+    g.add(c.m);
+  }
+
+  const J = jobs("city");
+  // Ice cream: scoops pile up on a big cone at the cart.
+  const creamAt = V(2.0, -2.5);
+  const cart = new THREE.Group();
+  add(cart, new THREE.BoxGeometry(1.3, 0.8, 0.8), std("#ffffff", { roughness: 0.5 }), 0, 0.65, 0);
+  add(cart, new THREE.BoxGeometry(1.32, 0.18, 0.82), std("#ff8fbf"), 0, 0.85, 0);
+  for (const s of [-1, 1]) add(cart, new THREE.CylinderGeometry(0.22, 0.22, 0.08, 16).rotateX(Math.PI / 2), std("#9a8ab8"), s * 0.42, 0.22, 0.42);
+  add(cart, new THREE.CylinderGeometry(0.03, 0.03, 1.4, 8), std("#ffffff"), 0, 1.75, 0);
+  const umb = add(cart, new THREE.ConeGeometry(0.95, 0.4, 16, 1, true), std("#7fc8f0", { side: THREE.DoubleSide, roughness: 0.7 }), 0, 2.45, 0);
+  void umb;
+  const cone = new THREE.Group();
+  add(cone, new THREE.ConeGeometry(0.16, 0.42, 14).rotateX(Math.PI), std("#e8b26a"), 0, 0.21, 0);
+  const scoopCols = ["#ffd6e6", "#bff0c8", "#fff1a8"];
+  const scoops = scoopCols.map((col, k) => add(cone, new THREE.SphereGeometry(0.17, 14, 10), std(col, { roughness: 0.6 }), 0, 0.47 + k * 0.22, 0));
+  cone.position.set(0.3, 1.04, 0.1);
+  cart.add(cone);
+  cart.position.set(2.95, 0, -3.15);
+  cart.rotation.y = -0.35;
+  g.add(cart);
+  // The bus stop: the sign's lights count down to the bus.
+  const busAt = V(-2.35, -4.3);
+  const stop = new THREE.Group();
+  for (const s of [-1, 1]) add(stop, new THREE.CylinderGeometry(0.05, 0.05, 2.1, 8), std("#9a8ab8"), s * 0.9, 1.05, -0.35);
+  add(stop, new THREE.BoxGeometry(2.2, 0.1, 1.0), std("#c9b8ff"), 0, 2.15, -0.15);
+  add(stop, new THREE.BoxGeometry(1.6, 0.12, 0.45), std("#ffd6a8"), 0, 0.5, -0.35);
+  const signBoard = add(stop, new THREE.BoxGeometry(0.7, 0.5, 0.06), std("#ffffff"), 1.25, 2.05, -0.3);
+  void signBoard;
+  add(stop, new THREE.CylinderGeometry(0.04, 0.04, 2.1, 8), std("#9a8ab8"), 1.25, 1.05, -0.3);
+  const lights: THREE.MeshStandardMaterial[] = [];
+  for (let k = 0; k < 4; k++) {
+    const m = std("#e6dff0", { emissive: new THREE.Color("#000000") });
+    lights.push(m);
+    add(stop, new THREE.SphereGeometry(0.055, 10, 8), m, 1.04 + k * 0.14, 2.05, -0.26);
+  }
+  stop.position.set(-2.6, 0, -4.8);
+  g.add(stop);
+  // Flowers come up in the planter box by the curb.
+  const flowersAt = V(2.5, -4.6);
+  const planter = new THREE.Group();
+  add(planter, new THREE.BoxGeometry(1.6, 0.45, 0.55), std("#e8b98a"), 0, 0.23, 0);
+  add(planter, new THREE.BoxGeometry(1.5, 0.05, 0.45), std("#8a6040"), 0, 0.46, 0);
+  const tulips: THREE.Group[] = [];
+  const tulipCols = ["#ff7fb0", "#ffd84d", "#c9a8f0", "#ff9a5a", "#7fc8f0"];
+  for (let k = 0; k < 5; k++) {
+    const t = new THREE.Group();
+    add(t, new THREE.CylinderGeometry(0.02, 0.02, 0.4, 6), std("#6cbf4a"), 0, 0.2, 0);
+    add(t, new THREE.SphereGeometry(0.1, 12, 8), std(tulipCols[k]), 0, 0.44, 0).scale.set(1, 1.3, 1);
+    t.position.set(-0.6 + k * 0.3, 0.46, 0);
+    planter.add(t);
+    tulips.push(t);
+  }
+  planter.position.set(3.5, 0, -4.95);
+  g.add(planter);
+  // A mural, painted on an easel a stroke at a time.
+  const paintAt = V(-2.0, -1.7);
+  const easel = new THREE.Group();
+  const legMat = std("#c98d58");
+  for (const s of [-1, 1]) {
+    const leg = add(easel, new THREE.CylinderGeometry(0.035, 0.035, 2.0, 6), legMat, s * 0.45, 1.0, 0);
+    leg.rotation.z = s * 0.12;
+  }
+  const back = add(easel, new THREE.CylinderGeometry(0.035, 0.035, 2.0, 6), legMat, 0, 0.95, -0.45);
+  back.rotation.x = -0.35;
+  const muralCv = document.createElement("canvas");
+  muralCv.width = 256;
+  muralCv.height = 192;
+  const muralTex = new THREE.CanvasTexture(muralCv);
+  muralTex.colorSpace = THREE.SRGBColorSpace;
+  add(easel, new THREE.BoxGeometry(1.25, 0.95, 0.05), std("#ffffff"), 0, 1.35, 0.03);
+  add(easel, new THREE.PlaneGeometry(1.15, 0.86), new THREE.MeshStandardMaterial({ map: muralTex, roughness: 0.8 }), 0, 1.35, 0.06);
+  add(easel, new THREE.BoxGeometry(1.1, 0.06, 0.18), legMat, 0, 0.85, 0.08);
+  let muralStep = -1;
+  const paintMural = (k: number) => {
+    const step = Math.floor(k * 8);
+    if (step === muralStep) return;
+    muralStep = step;
+    const c = muralCv.getContext("2d")!;
+    c.fillStyle = "#fffaf6";
+    c.fillRect(0, 0, 256, 192);
+    const arcs = ["#ff7fb0", "#ff9a5a", "#ffd84d", "#9fe08a", "#7fc8f0", "#c9a8f0"];
+    arcs.forEach((col, n) => {
+      if (n >= step) return;
+      c.strokeStyle = col;
+      c.lineWidth = 14;
+      c.beginPath();
+      c.arc(128, 170, 120 - n * 15, Math.PI, 0);
+      c.stroke();
+    });
+    if (step >= 7) {
+      c.fillStyle = "#ffffff";
+      for (const [cx, cy] of [[40, 160], [216, 160]]) {
+        c.beginPath();
+        c.arc(cx, cy, 22, 0, Math.PI * 2);
+        c.arc(cx + 22, cy + 4, 16, 0, Math.PI * 2);
+        c.fill();
+      }
+    }
+    muralTex.needsUpdate = true;
+  };
+  easel.position.set(-2.85, 0, -2.3);
+  easel.rotation.y = 0.5;
+  g.add(easel);
+
+  const spots: JobSpot[] = [
+    {
+      job: J.icecream,
+      at: creamAt,
+      yaw: yawTo(creamAt, 2.95, -3.15),
+      show: (k) => scoops.forEach((sc, n) => sc.scale.setScalar(popIn(k, 0.15 + n * 0.3))),
+    },
+    {
+      job: J.bus,
+      at: busAt,
+      yaw: 0.3,
+      show: (k, working, t) => {
+        lights.forEach((m, n) => {
+          const on = k > (n + 1) / 5;
+          m.color.set(on ? "#9fe08a" : "#e6dff0");
+          m.emissive.set(on ? "#4fae4f" : "#000000");
+          m.emissiveIntensity = on && working ? 0.5 + Math.sin(t * 6) * 0.2 : 0.4;
+        });
+      },
+    },
+    {
+      job: J.flowers,
+      at: flowersAt,
+      yaw: yawTo(flowersAt, 3.5, -4.95),
+      show: (k) => tulips.forEach((tl, n) => tl.scale.setScalar(popIn(k, 0.1 + n * 0.17))),
+    },
+    {
+      job: J.paint,
+      at: paintAt,
+      yaw: yawTo(paintAt, -2.85, -2.3),
+      show: (k) => paintMural(k),
+    },
+  ];
+  return {
+    id: "city",
+    group: g,
+    sky: skyTex("#8fd0ff", "#d6e9ff", "#ffe0ec", 0.55),
+    fog: new THREE.Fog("#e6e4f6", 18, 44),
+    light: ["#f8f6ff", "#ffe0ec"],
+    spots,
+    wander: [V(0.6, -2.7), V(1.2, -4.4), V(-1.5, -3.2), V(-0.2, -2.2), V(1.8, -1.2)],
+    box: { at: V(-0.55, -4.2), yaw: 0.2 },
+    paths: [
+      { how: "walk", from: V(-10, -10.6), to: V(10, -10.6) },
+      { how: "walk", from: V(-10, -5.0), to: V(10, -5.0) },
+    ],
+    update: (dt, t) => {
+      for (const c of traffic) {
+        c.m.position.x += c.dir * c.speed * dt;
+        if (c.dir > 0 && c.m.position.x > 26) c.m.position.x = -26 - Math.random() * 12;
+        if (c.dir < 0 && c.m.position.x < -26) c.m.position.x = 26 + Math.random() * 12;
+        c.m.position.y = Math.abs(Math.sin(t * 9 + c.lane)) * 0.03;
+      }
+    },
+    sway: () => ({ roll: 0, bob: 0 }),
+  };
+}
+
+const BUILD: Record<PlaceId, () => PlaceScene> = { table: buildTable, beach: buildBeach, boat: buildBoat, room: buildRoom, city: buildCity };
 
 /** Places are built the first time you go there, then kept. */
 const cache = new Map<PlaceId, PlaceScene>();

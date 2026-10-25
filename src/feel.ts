@@ -71,6 +71,6 @@ export function feelWord(soft: number): string {
   if (soft >= 0.9) return "Super soft!";
   if (soft >= 0.7) return "Soft and slow";
   if (soft >= 0.45) return "Squishy";
-  if (soft >= 0.15) return "Bouncy";
+  if (soft >= 0.15) return "Springy";
   return "Firm";
 }

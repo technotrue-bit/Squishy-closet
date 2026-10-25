@@ -1,9 +1,9 @@
-// The places you can play: the cozy tea table, a sunny beach, a sailing boat
-// and a living room. Friends find jobs to do in each one. This file is only
+// The places you can play: the cozy tea table, a sunny beach, a sailing boat,
+// a living room and a busy little city. Friends find jobs to do in each one. This file is only
 // the facts (names, jobs, which hats each place gives); the 3D scenes are in
 // placeScenes.ts.
 
-export const PLACE_IDS = ["table", "beach", "boat", "room"] as const;
+export const PLACE_IDS = ["table", "beach", "boat", "room", "city"] as const;
 export type PlaceId = (typeof PLACE_IDS)[number];
 
 /** What a friend's body does while it works on a job. */
@@ -86,6 +86,21 @@ export const PLACES: PlaceDef[] = [
       { hat: "nightcap", jobs: 2 },
       { hat: "bunny", jobs: 5 },
       { hat: "beanie", jobs: 9 },
+    ],
+  },
+  {
+    id: "city",
+    name: "Little City",
+    jobs: [
+      { id: "icecream", done: "sold ice cream", icon: "🍦", move: "bob", time: 18 },
+      { id: "bus", done: "caught the bus", icon: "🚌", move: "nap", time: 16 },
+      { id: "flowers", done: "planted flowers", icon: "🌷", move: "wiggle", time: 15 },
+      { id: "paint", done: "painted a mural", icon: "🎨", move: "lean", time: 20 },
+    ],
+    hats: [
+      { hat: "beret", jobs: 2 },
+      { hat: "ballCap", jobs: 5 },
+      { hat: "headphones", jobs: 9 },
     ],
   },
 ];

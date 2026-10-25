@@ -9,6 +9,7 @@ import { feelWord } from "./feel";
 import { HATS, type HatDef } from "./hats";
 import { PLACES, type PlaceId } from "./places";
 import { LOVE_PER_BOX, NAME_MAX, ZOOM_MAX, ZOOM_MIN } from "./save";
+import { LESSONS, moodById, type Mood, type MoodId } from "./personality";
 import type { Thumbs } from "./thumbs";
 
 const CSS = `
@@ -48,6 +49,28 @@ const CSS = `
 .ui .shelf .out .tag { background: #4fb3f0; }
 .ui .shelf .home { position: absolute; top: 2px; right: 0; width: 26px; height: 26px; border-radius: 13px; background: #fff; box-shadow: 0 2px 0 rgba(120,80,160,0.3); display: grid; place-items: center; padding: 0; }
 .ui .shelf .home svg { width: 16px; height: 16px; }
+.ui .cookies { display: flex; align-items: center; gap: 3px; font-weight: 900; font-size: 15px; color: #b86a2c; background: rgba(255,255,255,0.7); padding: 3px 10px 3px 6px; border-radius: 999px; transition: transform 0.2s; }
+.ui .cookies.beat { transform: scale(1.25); }
+.ui .cookies i { font-style: normal; font-size: 17px; line-height: 1; }
+.ui .shelf button.baby img { width: 54px; height: 54px; margin: 12px auto 0; }
+.ui .shelf .baby .tag { background: #ffb347; }
+.ui .shelf .baby .zz { position: absolute; top: 4px; right: 4px; font-size: 16px; }
+.ui .card .mood { font-weight: 800; font-size: 14px; color: #a0607f; margin: -6px 0 12px; }
+.ui .card .grew { position: absolute; top: 12px; right: 14px; padding: 3px 12px; border-radius: 999px; background: #bdf0c8; color: #2d7a43; font-weight: 900; font-size: 15px; transform: rotate(6deg); }
+.ui .card .note { font-weight: 800; font-size: 16px; color: #a0607f; margin: 6px 0 14px; line-height: 1.3; }
+.ui .card .note b { color: #b86a2c; }
+.ui .baby-top { display: flex; align-items: center; gap: 10px; margin: 0 40px 6px 0; }
+.ui .baby-top img { width: 96px; height: 96px; flex: none; }
+.ui .baby-top input { width: 100%; font: inherit; font-size: 22px; font-weight: 900; color: #e2508c; border: 3px dashed transparent; border-radius: 12px; background: transparent; padding: 2px 4px; outline: none; pointer-events: auto; -webkit-user-select: text; user-select: text; box-sizing: border-box; }
+.ui .baby-top input:focus { border-color: #ffb3d1; background: #fff; }
+.ui .baby-top .facts { font-weight: 800; font-size: 14px; color: #a0607f; line-height: 1.35; }
+.ui .baby-top .facts b { color: #7350b8; }
+.ui .lessons { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.ui .lessons button { border-radius: 18px; background: #fff; box-shadow: 0 3px 0 #f3c6da; padding: 8px 4px; font-weight: 900; font-size: 13px; color: #7350b8; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.ui .lessons button i { font-style: normal; font-size: 30px; line-height: 1.1; }
+.ui .lessons button:active { transform: translateY(2px); box-shadow: 0 1px 0 #f3c6da; }
+.ui .lessons.napping button { filter: grayscale(0.6) opacity(0.6); }
+.ui .sheet .tip { text-align: center; font-weight: 800; font-size: 14px; color: #a0607f; margin: 12px 0 0; }
 .ui .jobs { display: flex; align-items: center; gap: 4px; font-weight: 900; font-size: 15px; color: #2a86c4; background: rgba(255,255,255,0.7); padding: 3px 10px 3px 6px; border-radius: 999px; transition: transform 0.2s; }
 .ui .jobs.beat { transform: scale(1.25); }
 .ui .jobs svg { width: 20px; height: 20px; }
@@ -181,6 +204,7 @@ const PLACE_PICS: Record<PlaceId, string> = {
   table: `<svg viewBox="0 0 160 100"><rect width="160" height="100" fill="#ffd3ea"/><ellipse cx="80" cy="92" rx="90" ry="30" fill="#ffe6ee"/><rect x="104" y="44" width="34" height="26" rx="6" fill="#fff3f8"/><rect x="109" y="30" width="24" height="16" rx="5" fill="#ffc6df"/><circle cx="121" cy="27" r="4" fill="#ff4f6a"/><ellipse cx="48" cy="70" rx="17" ry="13" fill="#fff"/><circle cx="48" cy="55" r="4" fill="#ff9ec4"/><path d="M64 66l12-8" stroke="#fff" stroke-width="5" stroke-linecap="round"/><ellipse cx="80" cy="84" rx="16" ry="7" fill="#e3b27a"/><ellipse cx="80" cy="78" rx="12" ry="9" fill="#f2a9cf"/></svg>`,
   beach: `<svg viewBox="0 0 160 100"><rect width="160" height="100" fill="#9fdcff"/><circle cx="128" cy="22" r="13" fill="#fff3b0"/><rect y="46" width="160" height="16" fill="#5cc8ec"/><path d="M0 60c20-4 40 4 60 0s40 4 60 0 30 2 40 0v40H0z" fill="#f8deaa"/><path d="M28 70c2-14 4-24 12-34" stroke="#c98d58" stroke-width="5" fill="none"/><path d="M40 36c-10-6-22-2-24 4 8-3 16-2 24-4zM40 36c6-9 18-8 22-2-8-2-15 0-22 2zM40 36c0 9-4 15-10 18 2-8 5-13 10-18z" fill="#5cbf4a"/><path d="M100 78l18-22 18 22z" fill="#ff7fb0"/><path d="M118 56v26" stroke="#fff" stroke-width="2.5"/><rect x="66" y="74" width="20" height="12" rx="2" fill="#efc98a"/><rect x="69" y="66" width="5" height="9" fill="#efc98a"/><rect x="78" y="66" width="5" height="9" fill="#efc98a"/></svg>`,
   boat: `<svg viewBox="0 0 160 100"><rect width="160" height="100" fill="#bfe6ff"/><rect y="62" width="160" height="38" fill="#3fa9e0"/><path d="M10 72c10 2 20-2 30 0s20 2 30 0" stroke="#fff" stroke-width="3" fill="none" opacity=".6"/><path d="M30 66h100l-14 22H44z" fill="#e8b98a"/><path d="M28 64h104" stroke="#fff" stroke-width="5" stroke-linecap="round"/><path d="M80 12v52" stroke="#c98d58" stroke-width="4"/><path d="M82 14c22 10 30 26 28 44H82z" fill="#fff"/><path d="M82 40h28v6H82z" fill="#ffc6df"/><path d="M80 12l14 4-14 4z" fill="#ff5f9c"/></svg>`,
+  city: `<svg viewBox="0 0 160 100"><rect width="160" height="100" fill="#cfe8ff"/><rect x="6" y="22" width="30" height="50" fill="#ffc6df"/><rect x="38" y="34" width="28" height="38" fill="#c9e7a6"/><rect x="68" y="14" width="30" height="58" fill="#c9b8ff"/><rect x="100" y="30" width="26" height="42" fill="#ffe0a8"/><rect x="128" y="20" width="30" height="52" fill="#a8e0ff"/><g fill="#fff"><rect x="12" y="30" width="7" height="9"/><rect x="24" y="30" width="7" height="9"/><rect x="12" y="46" width="7" height="9"/><rect x="24" y="46" width="7" height="9"/><rect x="74" y="22" width="7" height="9"/><rect x="86" y="22" width="7" height="9"/><rect x="74" y="38" width="7" height="9"/><rect x="86" y="38" width="7" height="9"/><rect x="134" y="28" width="7" height="9"/><rect x="146" y="28" width="7" height="9"/></g><rect y="72" width="160" height="12" fill="#b9b3cc"/><path d="M8 78h14M34 78h14M60 78h14M86 78h14M112 78h14M138 78h14" stroke="#fff3a8" stroke-width="2"/><rect y="84" width="160" height="16" fill="#f6e6ee"/><rect x="96" y="68" width="34" height="12" rx="6" fill="#ff8fbf"/><circle cx="104" cy="81" r="3.5" fill="#4a4458"/><circle cx="122" cy="81" r="3.5" fill="#4a4458"/><circle cx="30" cy="62" r="9" fill="#8fd27a"/><rect x="29" y="68" width="2.5" height="10" fill="#c98d58"/></svg>`,
   room: `<svg viewBox="0 0 160 100"><rect width="160" height="100" fill="#fde3ee"/><rect y="70" width="160" height="30" fill="#e9c49a"/><rect x="58" y="14" width="44" height="30" rx="3" fill="#bfe6ff" stroke="#fff" stroke-width="4"/><rect x="34" y="46" width="64" height="26" rx="8" fill="#9fc4ff"/><rect x="34" y="56" width="64" height="12" rx="4" fill="#b8d4ff"/><rect x="112" y="20" width="22" height="50" rx="3" fill="#e8b98a"/><rect x="116" y="26" width="4" height="12" fill="#ff7fb0"/><rect x="122" y="28" width="4" height="10" fill="#7fc8f0"/><rect x="116" y="46" width="4" height="12" fill="#ffd84d"/><ellipse cx="78" cy="88" rx="40" ry="8" fill="#ffc6df"/></svg>`,
 };
 const STAR = `<svg viewBox="0 0 24 24"><path d="M12 2l3 6.5 7 .8-5.2 4.8 1.4 7L12 17.6 5.8 21.1l1.4-7L2 9.3l7-.8z" fill="#ffd84d" stroke="#fff" stroke-width="1.5"/></svg>`;
@@ -190,7 +214,7 @@ const CLOSE = `<svg width="24" height="24" viewBox="0 0 24 24"><path d="M6 6l12 
 const HAND = `<svg viewBox="0 0 64 64"><path d="M22 6c3 0 5 2 5 5v17l3-1c2-1 5 0 6 2 2-1 5 0 6 2 2-1 6 0 6 3v12c0 9-6 15-15 15h-3c-6 0-10-3-13-8l-8-13c-1-2 0-5 3-5 2 0 3 1 4 2l2 3V11c0-3 2-5 4-5z" fill="#fff" stroke="#5a2a4a" stroke-width="3" stroke-linejoin="round"/><path d="M30 29v8M36 31v7M42 33v6" stroke="#5a2a4a" stroke-width="2.5" stroke-linecap="round"/></svg>`;
 
 export type Screen = "title" | "closet" | "box";
-export type ShelfState = "held" | "out" | "rest";
+export type ShelfState = "held" | "out" | "rest" | "baby";
 export type HandMove = "press" | "pet" | "tickle" | "toss" | "tap" | "hug";
 
 export interface UiHandlers {
@@ -216,6 +240,21 @@ export interface UiHandlers {
   sound(): boolean;
   /** Something opened or closed over the game. */
   covered(on: boolean): void;
+  /** A baby on the shelf was tapped. */
+  babyTap(key: string): void;
+  teach(key: string, mood: MoodId): void;
+  renameBaby(key: string, name: string): void;
+}
+
+export interface BabyInfo {
+  key: string;
+  def: SquishyDef;
+  name: string;
+  /** "6 days" until it grows up. */
+  left: string;
+  /** Who it's becoming, or null while it's too early to tell. */
+  becoming: Mood | null;
+  napping: boolean;
 }
 
 export interface CardInfo {
@@ -226,6 +265,9 @@ export interface CardInfo {
   stars?: number;
   /** Shown from the Book: offer to hold it. */
   fromBook?: boolean;
+  mood?: MoodId;
+  /** It just grew up from a baby. */
+  grew?: boolean;
 }
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -249,6 +291,7 @@ export class Ui {
   private cardDone: (() => void) | null = null;
   private sheetEl: HTMLElement;
   private jobsEl: HTMLElement;
+  private cookiesEl: HTMLElement;
   private hatsDot: HTMLElement;
 
   constructor(
@@ -268,7 +311,7 @@ export class Ui {
       </div>
       <div class="layer closet">
         <div class="love">${HEART}<div class="bar"><div class="fill"></div></div><span class="gift">${GIFT}</span></div>
-        <div class="pills"><div class="stars">${STAR}<span>0</span></div><div class="jobs">${JOBS}<span>0</span></div></div>
+        <div class="pills"><div class="stars">${STAR}<span>0</span></div><div class="jobs">${JOBS}<span>0</span></div><div class="cookies"><i>🍪</i><span>0</span></div></div>
         <div class="plank"></div>
         <div class="shelf"></div>
         <div class="nav">
@@ -304,6 +347,7 @@ export class Ui {
     this.toastEl = q(".toast");
     this.sheetEl = q(".sheet");
     this.jobsEl = q(".jobs");
+    this.cookiesEl = q(".cookies");
     this.hatsDot = q(".hats-btn .dot");
     q(".hats-btn").addEventListener("click", () => this.hatsSheet());
     q(".places-btn").addEventListener("click", () => this.placesSheet());
@@ -348,6 +392,14 @@ export class Ui {
     }
   }
 
+  setCookies(n: number, beat = false): void {
+    this.cookiesEl.querySelector("span")!.textContent = String(n);
+    if (beat) {
+      this.cookiesEl.classList.add("beat");
+      setTimeout(() => this.cookiesEl.classList.remove("beat"), 220);
+    }
+  }
+
   /** A red dot on Hats when there is a new hat to try. */
   newHat(on: boolean): void {
     this.hatsDot.classList.toggle("on", on);
@@ -378,7 +430,7 @@ export class Ui {
    * out playing come first; tap a friend to hold it, tap a resting one to bring
    * it out, tap the little house to send a friend in to rest.
    */
-  setShelf(items: { id: string; state: ShelfState; hat: string | null }[]): void {
+  setShelf(items: { id: string; state: ShelfState; hat: string | null; key?: string; napping?: boolean }[]): void {
     const left = this.shelf.scrollLeft;
     this.shelf.innerHTML = "";
     for (const it of items) {
@@ -391,10 +443,17 @@ export class Ui {
       if (it.state !== "rest") {
         const tag = document.createElement("span");
         tag.className = "tag";
-        tag.textContent = it.state === "held" ? "Holding" : "Playing";
+        tag.textContent = it.state === "held" ? "Holding" : it.state === "baby" ? "Baby" : "Playing";
         b.appendChild(tag);
       }
-      b.addEventListener("click", () => this.h.shelfTap(it.id));
+      if (it.napping) {
+        const zz = document.createElement("span");
+        zz.className = "zz";
+        zz.textContent = "💤";
+        b.appendChild(zz);
+      }
+      const key = it.key;
+      b.addEventListener("click", () => (key ? this.h.babyTap(key) : this.h.shelfTap(it.id)));
       this.shelf.appendChild(b);
       if (it.state === "out") {
         const home = document.createElement("span");
@@ -545,6 +604,69 @@ export class Ui {
     });
   }
 
+  /** A baby asleep! Resolves true to keep it with a cookie. */
+  babyFound(def: SquishyDef, cookies: number, full: boolean): Promise<boolean> {
+    const can = cookies > 0 && !full;
+    const why = full
+      ? "You're looking after 3 babies already. Let one grow up first!"
+      : cookies > 0
+        ? `Keep it for <b>1 cookie</b>? It grows up in a week. How you play and what you teach it makes it who it is!`
+        : `You need a <b>cookie</b> to keep it. Friends bake cookies at the Tea Table, and sometimes find them doing jobs.`;
+    this.modal.innerHTML = `
+      <div class="card">
+        <div class="new">Shh!</div>
+        <img alt="">
+        <div class="name"><input readonly value="Baby ${esc(def.name)}" aria-label="Baby"></div>
+        <div class="kind">is fast asleep</div>
+        <div class="note">${why}</div>
+        <div class="btns">${can ? `<button class="big alt later">Let it sleep</button><button class="big keep">🍪 Keep it!</button>` : `<button class="big later">OK</button>`}</div>
+      </div>`;
+    this.thumbs.want(def.id, (url) => (this.modal.querySelector("img")!.src = url));
+    this.modal.classList.add("on");
+    this.coverChanged();
+    return new Promise((resolve) => {
+      let keep = false;
+      this.cardDone = () => resolve(keep);
+      this.modal.querySelector(".later")!.addEventListener("click", () => this.closeCard());
+      this.modal.querySelector(".keep")?.addEventListener("click", () => {
+        keep = true;
+        this.closeCard();
+      });
+    });
+  }
+
+  /** A baby you're raising: how long until it grows up, who it's becoming, and lessons. */
+  babySheet(b: BabyInfo): void {
+    const becoming = b.becoming ? `${b.becoming.icon} <b>${esc(b.becoming.name)}</b>` : "<b>Shy</b> so far. Teach me things!";
+    const panel = this.openSheet(
+      `<div class="baby-top"><img alt=""><div style="flex:1;min-width:0"><input maxlength="${NAME_MAX}" enterkeyhint="done" aria-label="Name">
+        <div class="facts">Grows up in <b>${esc(b.left)}</b><br>Becoming: ${becoming}</div></div></div>
+       <div class="sub">${b.napping ? "Shh, napping! Come back soon." : "What should we learn today?"}</div>
+       <div class="lessons${b.napping ? " napping" : ""}">${LESSONS.map((l) => `<button data-mood="${l.mood}"><i>${l.icon}</i>${esc(l.name)}</button>`).join("")}</div>
+       <div class="tip">Play with your baby by tapping it. Waking it from a nap makes it grumpy!</div>`,
+    );
+    const img = panel.querySelector("img")!;
+    this.thumbs.want(b.def.id, (url) => (img.src = url));
+    const input = panel.querySelector("input")!;
+    input.value = b.name;
+    const commit = () => this.h.renameBaby(b.key, input.value);
+    input.addEventListener("change", commit);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") input.blur();
+    });
+    for (const btn of panel.querySelectorAll<HTMLButtonElement>(".lessons button")) {
+      btn.addEventListener("click", () => {
+        if (b.napping) {
+          this.toast("Shh! Let it nap", 1300);
+          return;
+        }
+        commit();
+        this.closeSheet();
+        this.h.teach(b.key, btn.dataset.mood as MoodId);
+      });
+    }
+  }
+
   hint(text: string | null, sub?: string, dots?: { done: number; total: number }): void {
     if (!text) {
       this.hintEl.classList.remove("on");
@@ -585,14 +707,16 @@ export class Ui {
   card(info: CardInfo): Promise<void> {
     const { def } = info;
     const kind = `${FAMILIES.find((f) => f.id === def.family)?.name ?? ""} · ${FINISH_NAME[def.finish]}`;
+    const mood = moodById(info.mood);
     this.modal.innerHTML = `
       <div class="card">
         <div class="no">#${def.no}</div>
-        ${info.isNew ? `<div class="new">New!</div>` : ""}
+        ${info.grew ? `<div class="grew">All grown up!</div>` : info.isNew ? `<div class="new">New!</div>` : ""}
         <img alt="">
         <div class="name"><input maxlength="${NAME_MAX}" enterkeyhint="done" aria-label="Name"><span class="pen">${PEN}</span></div>
         <div class="kind">${esc(def.design)} · ${esc(kind)}</div>
-        <div class="chips"><span>${esc(def.personality)}</span><span class="feel">${esc(feelWord(def.soft))}</span></div>
+        <div class="chips"><span>${mood.icon} ${esc(mood.name)}</span><span class="feel">${esc(feelWord(def.soft))}</span></div>
+        <div class="mood">${esc(mood.about)}</div>
         ${info.stars ? `<div class="repeat">You have this one! +${info.stars} stars</div>` : ""}
         <div class="btns">${info.fromBook ? `<button class="big alt hold">Hold</button>` : ""}<button class="big yay">${info.fromBook ? "Close" : "Yay!"}</button></div>
       </div>`;
@@ -637,7 +761,7 @@ export class Ui {
   }
 
   /** The Squishy Book: every squishy, with shadows for ones not found yet. */
-  book(owned: Record<string, unknown>, nameOf: (id: string) => string): void {
+  book(owned: Record<string, { mood?: MoodId }>, nameOf: (id: string) => string): void {
     const found = CATALOG.filter((d) => owned[d.id]).length;
     let html = `<div class="head"><h1>Squishy Book</h1><div class="found">You found ${found} of ${CATALOG.length}!</div></div>
       <button class="round close" aria-label="Close">${CLOSE}</button>`;
@@ -660,7 +784,7 @@ export class Ui {
       this.thumbs.want(id, (url) => (img.src = url));
       cell.addEventListener("click", () => {
         const def = CATALOG.find((d) => d.id === id)!;
-        if (owned[id]) void this.card({ def, name: nameOf(id), fromBook: true });
+        if (owned[id]) void this.card({ def, name: nameOf(id), fromBook: true, mood: owned[id].mood });
         else {
           cell.classList.remove("wobble");
           void cell.offsetWidth;

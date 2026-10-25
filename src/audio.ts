@@ -168,6 +168,14 @@ export function giggle(pitch = 1): void {
   notes.forEach((n, i) => setTimeout(() => squeak(pitch * 1.25 * n, 0.08, 0.22), i * 85));
 }
 
+/** A little tune of soft squeaks, for musical squishies. */
+export function hum(pitch = 1): void {
+  const c = ready();
+  if (!c) return;
+  const notes = [1.0, 1.12, 1.26, 1.12, 1.33];
+  notes.forEach((n, i) => setTimeout(() => squeak(pitch * n, 0.16, 0.16), i * 190));
+}
+
 export function whoosh(): void {
   const c = ready();
   if (!c || !master || !noiseBuf) return;

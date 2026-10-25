@@ -10,6 +10,7 @@ import type { SquishyDef } from "./catalog";
 import type { JobDef } from "./places";
 import type { JobSpot, PlaceScene } from "./placeScenes";
 import * as sfx from "./audio";
+import { moodById, sayLine, type MoodId } from "./personality";
 
 export const FRIEND_SCALE = 0.8;
 
@@ -100,7 +101,7 @@ export class Crew {
   ) {}
 
   /** Makes the friends out match `team` (ids with their designs and hats). */
-  setTeam(team: { id: string; def: SquishyDef; hat: string | null }[]): void {
+  setTeam(team: { id: string; def: SquishyDef; hat: string | null; mood: MoodId }[]): void {
     // Keep a friend that is still out; reuse a body for a newcomer.
     const keep = new Map(this.friends.map((f) => [f.id, f]));
     const spare = this.friends.filter((f) => !team.some((t) => t.id === f.id));
@@ -125,6 +126,7 @@ export class Crew {
         f.id = t.id;
       }
       f.sq.setHat(t.hat);
+      f.sq.mood = moodById(t.mood);
       next.push(f);
     }
     for (const f of spare) this.removeFriend(f);
@@ -445,10 +447,19 @@ export class Crew {
   /** Picks something to do: a job, a wander, or a chat with another friend. */
   private choose(f: Friend): void {
     const p = this.place!;
-    const r = Math.random();
+    // Personality tips the odds: hard workers pick jobs, chatty ones find a pal.
+    const m = f.sq.mood;
+    const work = 0.62 * m.work;
+    const chat = 0.18 * m.chat;
+    const r = Math.random() * Math.max(1, work + chat + 0.2);
+    if (m.id === "sleepy" && Math.random() < 0.15) {
+      f.sq.nap();
+      f.state = { kind: "idle", until: this.now + 8 + Math.random() * 6 };
+      return;
+    }
     const busy = new Set(this.friends.map((o) => (o.state.kind === "work" ? o.state.spot : null)));
     const free = p.spots.filter((s) => !busy.has(s));
-    if (r < 0.62 && free.length) {
+    if (r < work && free.length) {
       const spot = free[Math.floor(Math.random() * free.length)];
       if ((this.progress.get(spot) ?? 0) >= 1) this.progress.set(spot, 0);
       this.goTo(f, spot.at, () => {
@@ -458,7 +469,7 @@ export class Crew {
       return;
     }
     const pal = this.friends.find((o) => o !== f && o.state.kind === "idle" && o.sq.isHome);
-    if (r < 0.8 && pal) {
+    if (r < work + chat && pal) {
       const mid = f.sq.home.clone().add(pal.sq.home).multiplyScalar(0.5);
       const dir = pal.sq.home.clone().sub(f.sq.home).setY(0);
       if (dir.lengthSq() < 0.01) dir.set(1, 0, 0);
@@ -514,9 +525,17 @@ export class Crew {
     if (f) this.comeUp(f, Math.random() < 0.55 ? "visit" : "play");
   }
 
+  /** Someone free to come up front; friendlier personalities come more often. */
   private pickFriend(): Friend | null {
     const ok = this.friends.filter((f) => !f.front && (f.state.kind === "idle" || f.state.kind === "work" || f.state.kind === "chat") && f.sq.isHome);
-    return ok.length ? ok[Math.floor(Math.random() * ok.length)] : null;
+    let total = 0;
+    for (const f of ok) total += f.sq.mood.visit;
+    let r = Math.random() * total;
+    for (const f of ok) {
+      r -= f.sq.mood.visit;
+      if (r < 0) return f;
+    }
+    return ok[ok.length - 1] ?? null;
   }
 
   private comeUp(f: Friend, what: "visit" | "play" | "cuddle"): void {
@@ -532,7 +551,8 @@ export class Crew {
         f.state = { kind: "visit", until: this.now + 11, taps: 0, side };
         f.sq.express("love", 1.2, 1);
         sfx.squeak(f.sq.pitch * 1.2, 0.14, 0.3);
-        this.ev.said(`${name} wants love!`);
+        this.ev.said(sayLine(f.sq.mood, name));
+        setTimeout(() => f.sq.quirk(), 1300);
       } else if (what === "play") {
         f.state = { kind: "play", until: this.now + 6.5, beat: 0.4, side };
         this.ev.said(`${name} came to play!`);

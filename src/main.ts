@@ -15,7 +15,25 @@ import { Ui, type HandMove, type Screen, type ShelfState } from "./ui";
 import { Thumbs } from "./thumbs";
 import { CATALOG, defById, type SquishyDef } from "./catalog";
 import { isOctober, openBox } from "./boxes";
-import { addHat, addLove, bringOut, cleanName, collect, holdSquishy, loadSave, nameOf, sendIn, storeSave, TEAM_MAX, ZOOM_MAX, ZOOM_MIN } from "./save";
+import {
+  addCookie,
+  addHat,
+  addLove,
+  babyName,
+  bringOut,
+  cleanName,
+  collect,
+  growUp,
+  holdSquishy,
+  keepBaby,
+  loadSave,
+  nameOf,
+  sendIn,
+  storeSave,
+  TEAM_MAX,
+  ZOOM_MAX,
+  ZOOM_MIN,
+} from "./save";
 import * as sfx from "./audio";
 import { BOTTOM_Y } from "./bao";
 import { fitCamera, flyBounds, swayCamera } from "./view";
@@ -23,6 +41,10 @@ import { placeScene } from "./placeScenes";
 import { hatsEarned, placeById, type PlaceId } from "./places";
 import { boxHat, hatById } from "./hats";
 import { Crew } from "./friends";
+import { Visitors } from "./visitors";
+import { Nursery } from "./nursery";
+import { moodById, randomMood, type MoodId } from "./personality";
+import { BABIES_MAX, growLeft, growWords, isNapping, moodOf, newBaby, pickBabyKind, play as playBaby, points, teach, SHY_BELOW } from "./babies";
 
 const app = document.getElementById("app")!;
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
@@ -49,6 +71,7 @@ let screen: Screen = "title";
 const persist = () => storeSave(save);
 const ownedIds = () => Object.keys(save.owned).sort((a, b) => save.owned[b].got - save.owned[a].got);
 const hatOf = (id: string | null) => (id && save.owned[id]?.hat) || null;
+const moodIdOf = (id: string | null): MoodId => (id && save.owned[id]?.mood) || "bouncy";
 
 // ---- the tutorial -----------------------------------------------------
 
@@ -115,6 +138,7 @@ function refreshMeters(): void {
   ui.setBoxes(save.boxes);
   ui.setStars(save.stars);
   ui.setJobs(save.jobs[save.place] ?? 0);
+  ui.setCookies(save.cookies);
 }
 
 function giveLove(n: number): void {
@@ -154,7 +178,14 @@ const FLOOR_HOME = new THREE.Vector3(0, -BOTTOM_Y, 0);
 squishy.home.copy(FLOOR_HOME);
 squishy.group.position.copy(squishy.home);
 squishy.setHat(hatOf(save.active));
+squishy.mood = moodById(moodIdOf(save.active));
 stage.scene.add(squishy.group);
+
+/** Shows `id` as the one you hold: its design, hat and personality. */
+function showHeld(def: SquishyDef, id: string): void {
+  squishy.setDesign(def, hatOf(id));
+  squishy.mood = moodById(moodIdOf(id));
+}
 
 // ---- friends and places -------------------------------------------------
 
@@ -168,7 +199,13 @@ const crew = new Crew(stage.scene, squishy, stage.shadowMat, {
     save.jobs[save.place] = (save.jobs[save.place] ?? 0) + 1;
     ui.setJobs(save.jobs[save.place], true);
     giveLove(6);
-    if (!ui.busy && !tutorialStep()) ui.toast(`${nameOf(save, f.id)} ${job.done}!`, 1800);
+    // Cookies for keeping babies: baked at the tea table, or found now and then.
+    const cookie = (job.id === "cookies" || Math.random() < 0.12) && addCookie(save);
+    if (cookie) {
+      persist();
+      ui.setCookies(save.cookies, true);
+    }
+    if (!ui.busy && !tutorialStep()) ui.toast(`${nameOf(save, f.id)} ${job.done}!${cookie ? (job.id === "cookies" ? " +1 🍪" : " Found a 🍪") : ""}`, 1800);
     void hatsFromJobs();
   },
   said: (text) => {
@@ -179,20 +216,149 @@ const crew = new Crew(stage.scene, squishy, stage.shadowMat, {
 
 function syncTeam(): void {
   crew.setTeam(
-    save.team.filter((id) => defById(id)).map((id) => ({ id, def: defById(id)!, hat: hatOf(id) })),
+    save.team.filter((id) => defById(id)).map((id) => ({ id, def: defById(id)!, hat: hatOf(id), mood: moodIdOf(id) })),
   );
+}
+
+// ---- squishies passing by, and babies -------------------------------------
+
+const visitors = new Visitors(stage.scene, stage.shadowMat, {
+  fx: (kind, at, count) => fx.emit(kind, at, count),
+  love: (n) => {
+    if (screen === "closet") giveLove(n);
+  },
+  said: (text) => {
+    if (!ui.busy && !tutorialStep()) ui.toast(text, 1400);
+  },
+  busy: () => [...(save.active ? [save.active] : []), ...save.team, ...save.babies.map((b) => b.kind)],
+});
+
+const nursery = new Nursery(stage.scene, stage.shadowMat, squishy, {
+  fx: (kind, at, count) => fx.emit(kind, at, count),
+});
+
+function syncBabies(): void {
+  const now = Date.now();
+  nursery.setBabies(
+    save.babies.filter((b) => defById(b.kind)).map((b) => ({ key: b.key, def: defById(b.kind)!, mood: moodOf(b), napping: isNapping(b, now) })),
+  );
+}
+
+/** Seconds of play until a sleeping baby turns up somewhere. */
+let babyClock = save.seen.includes("baby") ? 200 + Math.random() * 160 : 50;
+
+function stepBabies(dt: number): void {
+  if (screen !== "closet" || ui.busy || tutorialStep() || nursery.hasSleeper || save.babies.length >= BABIES_MAX) return;
+  babyClock -= dt;
+  if (babyClock > 0) return;
+  babyClock = 240 + Math.random() * 180;
+  const kind = pickBabyKind(new Set(Object.keys(save.owned)), save.babies.map((b) => b.kind), new Date(), Math.random);
+  const def = defById(kind);
+  if (!def) return;
+  nursery.putSleeper(def, placeScene(placeId));
+  if (!save.seen.includes("baby")) {
+    save.seen.push("baby");
+    persist();
+    ui.toast("Shh! A baby squishy is asleep! Tap it", 2600);
+  } else ui.toast("A baby squishy is napping nearby!", 2000);
+}
+
+async function foundBaby(): Promise<void> {
+  const kind = nursery.sleeperKind;
+  const def = kind ? defById(kind) : null;
+  if (!def) return;
+  sfx.squeak(def.pitch * 1.5, 0.1, 0.18);
+  const keep = await ui.babyFound(def, save.cookies, save.babies.length >= BABIES_MAX);
+  if (!keep) return;
+  const baby = newBaby(def.id, Date.now());
+  if (!keepBaby(save, baby)) return;
+  persist();
+  ui.setCookies(save.cookies, true);
+  nursery.wakeSleeper(baby.key, moodOf(baby));
+  sfx.chime(true);
+  refreshShelf();
+  ui.toast(`${babyName(baby)} is yours!`, 1800);
+  setTimeout(() => {
+    if (screen === "closet" && !ui.busy) openBaby(baby.key);
+  }, 1900);
+}
+
+function babyInfo(key: string) {
+  const b = save.babies.find((x) => x.key === key);
+  const def = b && defById(b.kind);
+  if (!b || !def) return null;
+  const now = Date.now();
+  return { key, def, name: babyName(b), left: growWords(growLeft(b, now)), becoming: points(b) >= SHY_BELOW ? moodById(moodOf(b)) : null, napping: isNapping(b, now) };
+}
+
+function openBaby(key: string): void {
+  const info = babyInfo(key);
+  if (!info) return;
+  sfx.pop();
+  ui.babySheet(info);
+}
+
+function teachBaby(key: string, mood: MoodId): void {
+  const b = save.babies.find((x) => x.key === key);
+  if (!b) return;
+  const res = teach(b, mood, Date.now());
+  persist();
+  if (res === "napping") return;
+  const lesson = moodById(mood).lesson;
+  nursery.learned(key, mood, res === "tired");
+  sfx.chime(false);
+  giveLove(3);
+  ui.toast(res === "tired" ? `${babyName(b)} is all tired out. Nap time!` : `${babyName(b)} loved ${lesson?.name.toLowerCase() ?? "that"}!`, 1800);
+  refreshShelf();
+}
+
+function tapBaby(key: string): void {
+  const b = save.babies.find((x) => x.key === key);
+  if (!b) return;
+  const res = playBaby(b, Date.now());
+  persist();
+  nursery.played(key, res === "woke");
+  giveLove(1);
+  if (res === "woke") {
+    ui.toast(`Oops! ${babyName(b)} was napping. Grumpy!`, 1600);
+    refreshShelf();
+  }
+}
+
+/** Babies a week old grow up, one card each. */
+let growQueue = Promise.resolve();
+function checkGrowUp(): void {
+  const grown = growUp(save, Date.now());
+  if (!grown.length) return;
+  persist();
+  syncBabies();
+  syncTeam();
+  refreshShelf();
+  for (const g of grown) {
+    const def = defById(g.baby.kind);
+    if (!def) continue;
+    growQueue = growQueue.then(async () => {
+      while (screen !== "closet" || ui.busy) await new Promise((r) => setTimeout(r, 500));
+      sfx.chime(true);
+      fx.emit("sparkle", squishy.topPoint(), 10);
+      await ui.card({ def, name: nameOf(save, def.id), mood: g.mood, grew: true, stars: g.joined ? 5 : undefined });
+    });
+  }
 }
 
 function refreshShelf(): void {
   const rank = (id: string): number => (id === save.active ? 0 : save.team.includes(id) ? 1 : 2);
   const ids = ownedIds().sort((a, b) => rank(a) - rank(b));
-  ui.setShelf(
-    ids.map((id) => ({
-      id,
-      state: (id === save.active ? "held" : save.team.includes(id) ? "out" : "rest") as ShelfState,
-      hat: hatOf(id),
-    })),
-  );
+  const items: { id: string; state: ShelfState; hat: string | null; key?: string; napping?: boolean }[] = ids.map((id) => ({
+    id,
+    state: (id === save.active ? "held" : save.team.includes(id) ? "out" : "rest") as ShelfState,
+    hat: hatOf(id),
+  }));
+  // Babies sit right after the ones out playing.
+  const now = Date.now();
+  const at = items.findIndex((it) => it.state === "rest");
+  items.splice(at < 0 ? items.length : at, 0, ...save.babies.map((b) => ({ id: b.kind, state: "baby" as ShelfState, hat: null, key: b.key, napping: isNapping(b, now) })));
+  ui.setShelf(items);
 }
 
 let hatQueue = Promise.resolve();
@@ -240,6 +406,8 @@ function goPlace(id: PlaceId, quiet = false): void {
   const p = placeScene(id);
   stage.setPlace(p);
   crew.setPlace(p);
+  visitors.setPlace(p);
+  nursery.setPlace();
   ui.setJobs(save.jobs[id] ?? 0);
   if (!quiet) {
     sfx.whoosh();
@@ -256,7 +424,7 @@ function hold(id: string): void {
   if (!def || !save.owned[id] || screen !== "closet") return;
   if (save.active !== id) {
     holdSquishy(save, id);
-    squishy.setDesign(def, hatOf(id));
+    showHeld(def, id);
     persist();
     syncTeam();
     refreshShelf();
@@ -355,14 +523,14 @@ function popOut(): void {
   if (!reveal) return;
   const { def, first } = reveal;
   if (!first) save.boxes = Math.max(0, save.boxes - 1);
-  const got = collect(save, def.id, Date.now());
+  const got = collect(save, def.id, Date.now(), randomMood(Math.random));
   const prevActive = save.active;
   // A new one is held right away; the one you held joins the friends.
   if (got.isNew) holdSquishy(save, def.id);
   const hat = first ? null : boxHat(save.hats, isOctober(new Date()), Math.random);
   if (hat) addHat(save, hat);
   persist();
-  squishy.setDesign(def, hatOf(def.id));
+  showHeld(def, def.id);
   squishy.group.visible = true;
   popScale = 0.15;
   squishy.popIn();
@@ -379,11 +547,11 @@ function popOut(): void {
   sfx.pop();
   sfx.chime(true);
   setTimeout(async () => {
-    await ui.card({ def, name: nameOf(save, def.id), isNew: got.isNew, stars: got.isNew ? undefined : got.stars });
+    await ui.card({ def, name: nameOf(save, def.id), isNew: got.isNew, stars: got.isNew ? undefined : got.stars, mood: moodIdOf(def.id) });
     // A repeat goes to the star jar; you keep holding the one you had.
     if (!got.isNew && prevActive && prevActive !== def.id) {
       const back = defById(prevActive);
-      if (back) squishy.setDesign(back, hatOf(prevActive));
+      if (back) showHeld(back, prevActive);
     }
     reveal = null;
     pointAtOpen = false;
@@ -405,8 +573,13 @@ function setScreen(s: Screen): void {
   ui.show(s);
   ui.hand(null);
   crew.paused = s !== "closet";
+  visitors.paused = s !== "closet";
+  nursery.paused = s !== "closet";
   for (const f of crew.friends) f.sq.group.visible = s === "closet";
+  nursery.setVisible(s === "closet");
+  visitors.setVisible(s === "closet");
   if (s === "closet") {
+    checkGrowUp();
     refreshMeters();
     refreshShelf();
     if (tutorialStep()) showTutorial();
@@ -465,7 +638,19 @@ const ui = new Ui(
     sound: () => save.sound,
     covered: (on) => {
       crew.paused = on || screen !== "closet";
+      visitors.paused = crew.paused;
+      nursery.paused = crew.paused;
       if (on) fingersUp();
+    },
+    babyTap: (key) => openBaby(key),
+    teach: teachBaby,
+    renameBaby: (key, name) => {
+      const b = save.babies.find((x) => x.key === key);
+      if (!b) return;
+      const clean = cleanName(name);
+      if (clean && clean !== `Baby ${defById(b.kind)?.name}`) b.name = clean;
+      else delete b.name;
+      persist();
     },
     rename: (id, name) => {
       const o = save.owned[id];
@@ -627,10 +812,22 @@ canvas.addEventListener("pointerdown", (e) => {
   }
   if (!hitSquishy(e.clientX, e.clientY)) {
     ray.setFromCamera(ndc, camera);
+    // Babies first: they're small and right in front.
+    const n = nursery.hit(ray);
+    if (n) {
+      if (n.kind === "sleeper") void foundBaby();
+      else tapBaby(n.key);
+      return;
+    }
     const f = crew.hit(ray);
     if (f) {
       const h = ray.intersectObject(f.sq.mesh, false)[0];
       crew.tap(f, h?.point ?? f.sq.topPoint());
+      return;
+    }
+    const v = visitors.hit(ray);
+    if (v) {
+      visitors.tap(v);
       return;
     }
   }
@@ -758,6 +955,21 @@ function stepPace(ms: number): void {
   }
 }
 
+let growClock = 30;
+function stepGrowClock(dt: number): void {
+  growClock -= dt;
+  if (growClock > 0) return;
+  growClock = 30;
+  checkGrowUp();
+  // Naps end by themselves.
+  const now = Date.now();
+  for (const b of save.babies) if (b.napUntil && !isNapping(b, now)) {
+    b.napUntil = 0;
+    nursery.setNapping(b.key, false);
+    refreshShelf();
+  }
+}
+
 let glimmerAt = 0;
 let last = performance.now();
 let hugHearts = 0;
@@ -779,7 +991,13 @@ function frame(): void {
   squishy.update(dt, now, bounds);
   const place = placeScene(placeId);
   place.update(dt, now);
-  if (screen === "closet") crew.update(dt, now, bounds);
+  if (screen === "closet") {
+    crew.update(dt, now, bounds);
+    visitors.update(dt, now, bounds);
+    nursery.update(dt, now, bounds);
+    stepBabies(dt);
+    stepGrowClock(dt);
+  }
   const sway = place.sway(now);
   swayCamera(camera, sway.roll, sway.bob);
   if (popScale < 1) {
@@ -836,6 +1054,7 @@ if (save.tutorial === "done" && addHat(save, "party")) {
 }
 goPlace(save.place, true);
 syncTeam();
+syncBabies();
 setScreen("title");
 requestAnimationFrame(frame);
 
