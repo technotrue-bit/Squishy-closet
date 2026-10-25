@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.1",
   "type": "module",
-  "description": "Squishy Closet! A cute three.js squishy collecting game for kids on TrueAIGaming.com. Phone first, upright.",
+  "description": "Aurora's World: a cute three.js squishy collecting game for kids on TrueAIGaming.com. Phone first, upright.",
   "scripts": {
     "dev": "vite --port 5183 --strictPort",
     "build": "tsc --noEmit && vite build",

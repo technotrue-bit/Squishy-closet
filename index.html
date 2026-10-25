@@ -7,13 +7,13 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="Squishy Closet" />
+    <meta name="apple-mobile-web-app-title" content="Aurora's World" />
     <meta name="robots" content="noindex" />
     <link
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23ffc6df'/%3E%3Cpath d='M4 22c0-9 5-15 12-15s12 6 12 15c0 2-2 4-12 4S4 24 4 22z' fill='%23f2a9cf'/%3E%3Ccircle cx='11' cy='18' r='1.6' fill='%232a1a24'/%3E%3Ccircle cx='21' cy='18' r='1.6' fill='%232a1a24'/%3E%3C/svg%3E"
     />
-    <title>Squishy Closet!</title>
+    <title>Aurora's World</title>
     <style>
       html,
       body {
@@ -54,7 +54,7 @@
           if (!el || el.dataset.shown) return;
           el.dataset.shown = "1";
           el.style.display = "flex";
-          el.textContent = "Squishy Closet could not start: " + msg;
+          el.textContent = "Aurora's World could not start: " + msg;
         }
         window.addEventListener("error", function (e) { show(e.message || "unknown error"); });
         window.addEventListener("unhandledrejection", function (e) { show(String(e.reason)); });

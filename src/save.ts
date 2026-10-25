@@ -2,9 +2,15 @@
 // carry every kid's squishies forward; old saves are upgraded on load.
 
 import { defById } from "./catalog";
+import { hatById } from "./hats";
+import { PLACE_IDS, type PlaceId } from "./places";
 
 export const SAVE_KEY = "squishycloset.save";
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
+/** Squishies out at once: the one you hold and up to three friends. */
+export const TEAM_MAX = 3;
+export const ZOOM_MIN = 0.85;
+export const ZOOM_MAX = 1.8;
 /** Love it takes to earn the next Squishy Box. */
 export const LOVE_PER_BOX = 100;
 export const NAME_MAX = 14;
@@ -14,6 +20,8 @@ export interface Owned {
   name?: string;
   /** When it was found (ms). */
   got: number;
+  /** The hat it wears. */
+  hat?: string;
 }
 
 export interface Save {
@@ -31,6 +39,18 @@ export interface Save {
   /** Tutorial steps done; "done" when finished or skipped. */
   tutorial: string[] | "done";
   tried: string[];
+  /** Friends out playing behind the one you hold (not counting it). */
+  team: string[];
+  /** Hats found. */
+  hats: string[];
+  /** Where you are playing. */
+  place: PlaceId;
+  /** Jobs the friends finished, per place. */
+  jobs: Record<string, number>;
+  /** 1 is the normal view; smaller is closer, bigger is farther out. */
+  zoom: number;
+  /** One-time tips already shown. */
+  seen: string[];
 }
 
 export const freshSave = (): Save => ({
@@ -43,6 +63,12 @@ export const freshSave = (): Save => ({
   owned: {},
   tutorial: [],
   tried: [],
+  team: [],
+  hats: [],
+  place: "table",
+  jobs: {},
+  zoom: 1,
+  seen: [],
 });
 
 const strings = (a: unknown): string[] => (Array.isArray(a) ? a.filter((t): t is string => typeof t === "string") : []);
@@ -78,10 +104,27 @@ export function parseSave(raw: string | null): Save {
     if (!defById(id) || typeof o !== "object" || o === null) continue;
     const rec = o as Record<string, unknown>;
     const name = typeof rec.name === "string" ? cleanName(rec.name) : "";
-    out.owned[id] = { got: count(rec.got), ...(name ? { name } : {}) };
+    const hat = typeof rec.hat === "string" && hatById(rec.hat) ? rec.hat : "";
+    out.owned[id] = { got: count(rec.got), ...(name ? { name } : {}), ...(hat ? { hat } : {}) };
   }
   out.active = typeof s.active === "string" && out.owned[s.active] ? s.active : (Object.keys(out.owned)[0] ?? null);
   out.tutorial = s.tutorial === "done" ? "done" : strings(s.tutorial);
+  out.hats = [...new Set(strings(s.hats).filter((h) => hatById(h)))];
+  for (const o of Object.values(out.owned)) if (o.hat && !out.hats.includes(o.hat)) delete o.hat;
+  out.place = PLACE_IDS.includes(s.place as PlaceId) ? (s.place as PlaceId) : "table";
+  const jobs = typeof s.jobs === "object" && s.jobs !== null ? (s.jobs as Record<string, unknown>) : {};
+  for (const p of PLACE_IDS) if (count(jobs[p]) > 0) out.jobs[p] = count(jobs[p]);
+  out.zoom = typeof s.zoom === "number" && s.zoom >= ZOOM_MIN && s.zoom <= ZOOM_MAX ? s.zoom : 1;
+  out.seen = strings(s.seen);
+  if (s.v === 2) {
+    // New in this update: friends play together, so bring the newest ones out.
+    out.team = Object.keys(out.owned)
+      .filter((id) => id !== out.active)
+      .sort((a, b) => out.owned[b].got - out.owned[a].got)
+      .slice(0, TEAM_MAX);
+  } else {
+    out.team = [...new Set(strings(s.team))].filter((id) => out.owned[id] && id !== out.active).slice(0, TEAM_MAX);
+  }
   return out;
 }
 
@@ -121,6 +164,46 @@ export function collect(s: Save, id: string, now: number): { isNew: boolean; sta
   }
   s.owned[id] = { got: now };
   return { isNew: true, stars: 0 };
+}
+
+/**
+ * Makes `id` the one you hold. The one you held stays out as a friend if there
+ * is room; `id` leaves the friends if it was one.
+ */
+export function holdSquishy(s: Save, id: string): void {
+  if (!s.owned[id] || s.active === id) return;
+  const prev = s.active;
+  const at = s.team.indexOf(id);
+  if (at >= 0) {
+    // Swap places: the old one takes its spot with the friends.
+    if (prev) s.team[at] = prev;
+    else s.team.splice(at, 1);
+  } else if (prev && s.team.length < TEAM_MAX) s.team.push(prev);
+  s.active = id;
+}
+
+/** Brings a resting squishy out to play, sending `swapOut` in if the team is full. */
+export function bringOut(s: Save, id: string, swapOut?: string): boolean {
+  if (!s.owned[id] || id === s.active || s.team.includes(id)) return false;
+  if (s.team.length >= TEAM_MAX) {
+    const at = swapOut ? s.team.indexOf(swapOut) : -1;
+    if (at < 0) return false;
+    s.team[at] = id;
+    return true;
+  }
+  s.team.push(id);
+  return true;
+}
+
+/** Sends a friend in to rest in the closet. */
+export function sendIn(s: Save, id: string): void {
+  s.team = s.team.filter((t) => t !== id);
+}
+
+export function addHat(s: Save, id: string): boolean {
+  if (!hatById(id) || s.hats.includes(id)) return false;
+  s.hats.push(id);
+  return true;
 }
 
 export function nameOf(s: Save, id: string): string {

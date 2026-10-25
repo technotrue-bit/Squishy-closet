@@ -83,7 +83,7 @@ function stem(): THREE.Object3D {
   return g;
 }
 
-function witchHat(): THREE.Object3D {
+export function witchHat(): THREE.Object3D {
   const g = new THREE.Group();
   const felt = mat("#3d2b5a", { roughness: 0.8, clearcoat: 0.1 });
   const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.52, 0.05, 40), felt);

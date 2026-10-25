@@ -8,6 +8,7 @@ import { drawFace, FACE_H, FACE_W, type Expression } from "./face";
 import type { SquishyDef } from "./catalog";
 import { feelFor, type Feel } from "./feel";
 import { buildParts, type PartPin } from "./parts";
+import { buildHat, type HatCtx, type HatModel } from "./hatModels";
 import { drawSkin, SKIN_H, SKIN_W } from "./skin";
 import * as sfx from "./audio";
 import { FLY_PLANE_Z } from "./view";
@@ -58,6 +59,29 @@ interface Pinned {
   v: number;
 }
 
+/** Extras that sit on top of the head; a hat takes their place. */
+const HEAD_PARTS = new Set(["witchHat", "stem", "leaf"]);
+
+/** The hat: it lags and wobbles behind every hop, and pops up when tapped. */
+interface HatRig {
+  id: string;
+  model: HatModel;
+  /** Wobbles about x and z, stretch in y. */
+  wob: THREE.Group;
+  /** Lifts and spins when popped. */
+  pop: THREE.Group;
+  wx: Spring;
+  wz: Spring;
+  wy: Spring;
+  popH: number;
+  popV: number;
+  spin: number;
+  spinV: number;
+  last: THREE.Vector3;
+  lastV: THREE.Vector3;
+  fresh: boolean;
+}
+
 const REF = {
   forward: new THREE.Vector3(0, 0, 1),
   up: new THREE.Vector3(0, 1, 0),
@@ -94,6 +118,18 @@ export class Squishy {
   private skinTex: THREE.CanvasTexture | null = null;
   private partsGroup = new THREE.Group();
   private pinned: Pinned[] = [];
+  private hat: HatRig | null = null;
+  private hatId: string | null = null;
+  /** Falls asleep by itself after a while with nobody playing. */
+  autoSleep = true;
+  /** Which way it faces (radians about up); friends turn to look at things. */
+  yawTarget = 0;
+  private yaw = 0;
+  private retHops = 3;
+  private retTime = 0.48;
+  private retHeight = 0.55;
+  private retQuiet = false;
+  private retThen: (() => void) | null = null;
   private glow = false;
   def!: SquishyDef;
   private feel: Feel = feelFor(0.5);
@@ -203,8 +239,20 @@ export class Squishy {
     this.faceGeo.setIndex(new THREE.BufferAttribute(this.patch.index, 1));
   }
 
+  /** Puts on a hat, or takes it off with null. */
+  setHat(id: string | null): void {
+    if (id === this.hatId) return;
+    this.hatId = id;
+    this.setDesign(this.def);
+  }
+
+  get hatOn(): string | null {
+    return this.hatId;
+  }
+
   /** Becomes another squishy: its body shape, skin, extras, face, finish and feel. */
-  setDesign(def: SquishyDef): void {
+  setDesign(def: SquishyDef, hat: string | null = this.hatId): void {
+    this.hatId = hat;
     this.def = def;
     this.feel = feelFor(def.soft);
     this.grid = buildGrid(SHAPES[def.body]);
@@ -258,8 +306,37 @@ export class Squishy {
     for (const p of this.pinned) disposeTree(p.holder);
     this.partsGroup.clear();
     this.pinned = [];
+    this.hat = null;
     const g = this.grid.dir;
-    for (const pin of buildParts(def.parts, def.color)) {
+    const model = hat ? buildHat(hat) : null;
+    const pins = buildParts(model ? def.parts.filter((p) => !HEAD_PARTS.has(p)) : def.parts, def.color);
+    if (model) {
+      const wob = new THREE.Group();
+      const pop = new THREE.Group();
+      // A little bigger than life, so it reads on a phone.
+      model.obj.scale.multiplyScalar(1.3);
+      pop.add(model.obj);
+      wob.add(pop);
+      this.hat = {
+        id: hat!,
+        model,
+        wob,
+        pop,
+        wx: new Spring(150, 8),
+        wz: new Spring(150, 8),
+        wy: new Spring(260, 10),
+        popH: 0,
+        popV: 0,
+        spin: 0,
+        spinV: 0,
+        last: new THREE.Vector3(),
+        lastV: new THREE.Vector3(),
+        fresh: true,
+      };
+      // Sits a little into the top so it hugs the bun.
+      pins.push({ obj: wob, dir: new THREE.Vector3(0, 1, 0), lift: -0.04, ref: "forward" });
+    }
+    for (const pin of pins) {
       let best = 0;
       let bestDot = -2;
       for (let k = 0; k < this.grid.count; k++) {
@@ -287,6 +364,112 @@ export class Squishy {
 
   get isHugging(): boolean {
     return this.hugging;
+  }
+
+  get isSleeping(): boolean {
+    return this.sleeping;
+  }
+
+  // ---- things friends do by themselves ------------------------------------
+
+  /** Hops over to a spot, a few hops at a time, turning to face the way it goes. */
+  hopTo(target: THREE.Vector3, opts: { height?: number; then?: () => void } = {}): void {
+    if (this.mode === "fly" || this.mode === "dizzy") return;
+    const from = this.mode === "home" ? this.home : this.group.position;
+    const dx = target.x - from.x;
+    const dz = target.z - from.z;
+    const dist = Math.hypot(dx, dz);
+    this.returnFrom.copy(this.group.position);
+    this.home.copy(target);
+    this.retHops = Math.max(1, Math.round(dist / 0.85));
+    this.retTime = 0.42;
+    this.retHeight = opts.height ?? 0.4;
+    this.retQuiet = true;
+    this.retThen = opts.then ?? null;
+    if (dist > 0.2) this.yawTarget = Math.atan2(dx, dz);
+    this.mode = "return";
+    this.modeTime = 0;
+    this.sleeping = false;
+    this.idleFor = 0;
+  }
+
+  /** Turns to face a way at once. */
+  faceNow(yaw: number): void {
+    this.yaw = this.yawTarget = yaw;
+  }
+
+  /** Puts it straight down at a spot, standing still. */
+  placeAt(at: THREE.Vector3): void {
+    this.mode = "home";
+    this.home.copy(at);
+    this.group.position.copy(at);
+    this.retThen = null;
+    this.retQuiet = false;
+  }
+
+  /** A happy little bounce on the spot. */
+  bounce(v = 3.4): void {
+    this.hop(v);
+  }
+
+  wiggle(): void {
+    this.turn.v += (Math.random() < 0.5 ? -1 : 1) * 4;
+    this.squash.v += 0.8;
+  }
+
+  /** Leans toward something (x right, z forward), 0 to stand up straight. */
+  lean(x: number, z: number): void {
+    this.leanX.target = x;
+    this.leanZ.target = z;
+  }
+
+  express(e: Expression, seconds: number, talk = 0): void {
+    this.setExpr(e, seconds);
+    if (talk) this.talk = talk;
+  }
+
+  /** Dozes off right now (to cuddle, or nap in the sun). */
+  nap(): void {
+    if (this.sleeping) return;
+    this.setExpr("sleepy", 0.8);
+    sfx.yawn(this.pitch);
+    this.sleeping = true;
+    this.zzAt = this.now + 1;
+  }
+
+  wakeUp(): void {
+    if (this.sleeping) this.wake();
+    this.idleFor = 0;
+  }
+
+  /** How bouncy it is right now, for hats and effects. */
+  get energy(): number {
+    return Math.min(1, (Math.abs(this.hopV) + Math.abs(this.squash.v) * 0.6 + this.vel.length() * 0.25 + Math.abs(this.turn.v) * 0.15) / 6);
+  }
+
+  /** True if the ray hits the hat. */
+  hatHit(ray: THREE.Raycaster): boolean {
+    return !!this.hat && ray.intersectObject(this.hat.wob, true).length > 0;
+  }
+
+  /** Tapped on the hat: it pops up, spins and lands back. */
+  popHat(): void {
+    const h = this.hat;
+    if (!h || h.popH > 0.02) return;
+    h.popV = 3.4;
+    h.spinV = Math.PI * 2 / 0.45;
+    this.squash.v += 1.2;
+    this.setExpr("surprised", 0.3);
+    setTimeout(() => this.setExpr("happy", 0.9), 300);
+    sfx.boing(this.pitch * 1.25);
+    this.ev.fx("sparkle", this.hatTop(), 4);
+    this.ev.love(1);
+  }
+
+  /** World point at the top of the hat, or the head. */
+  hatTop(out = new THREE.Vector3()): THREE.Vector3 {
+    if (!this.hat) return this.topPoint(out);
+    return this.hat.wob.getWorldPosition(out).add(new THREE.Vector3(0, 0.3 * this.group.scale.y, 0));
   }
 
   giveLove(n: number): void {
@@ -515,6 +698,11 @@ export class Squishy {
     this.mode = "fly";
     this.modeTime = 0;
     this.grounded = false;
+    this.retQuiet = false;
+    this.retHops = 3;
+    this.retTime = 0.48;
+    this.retHeight = 0.55;
+    this.retThen = null;
     this.squash.v -= 3; // stretch as it leaves
     this.setExpr("surprised", 0.8);
     sfx.whoosh();
@@ -597,16 +785,19 @@ export class Squishy {
 
   // ---- every frame ---------------------------------------------------
 
-  update(dt: number, now: number, bounds: Bounds): void {
+  /** `geometry` false skips reshaping the body this frame (for friends far away). */
+  update(dt: number, now: number, bounds: Bounds, geometry = true): void {
     this.now = now;
     this.time.value = now;
+    this.frameDt = dt;
     const steps = Math.max(1, Math.ceil(dt / (1 / 120)));
     const h = dt / steps;
     for (let s = 0; s < steps; s++) this.stepPhysics(h, bounds);
     this.stepIdle(dt);
     this.stepFace(dt);
-    this.rebuild();
+    this.rebuild(geometry);
   }
+  private frameDt = 1 / 60;
 
   private stepPhysics(dt: number, b: Bounds): void {
     // Slow rise: very damped until it has nearly puffed back up.
@@ -663,8 +854,8 @@ export class Squishy {
         break;
       case "return": {
         this.modeTime += dt;
-        const hops = 3;
-        const hopTime = 0.48;
+        const hops = this.retHops;
+        const hopTime = this.retTime;
         const total = hops * hopTime;
         const t = Math.min(1, this.modeTime / total);
         const k = Math.min(hops - 1, Math.floor(this.modeTime / hopTime));
@@ -672,19 +863,28 @@ export class Squishy {
         const prevK = Math.min(hops - 1, Math.floor((this.modeTime - dt) / hopTime));
         if (k !== prevK || t >= 1) {
           this.squash.v += 3.4;
-          sfx.squeak(this.pitch * (1 + 0.08 * k), 0.08, 0.2);
+          if (!this.retQuiet) sfx.squeak(this.pitch * (1 + 0.08 * k), 0.08, 0.2);
         }
         const p = this.group.position;
         p.x = THREE.MathUtils.lerp(this.returnFrom.x, this.home.x, t);
         p.z = THREE.MathUtils.lerp(this.returnFrom.z, this.home.z, t);
         const baseY = THREE.MathUtils.lerp(this.returnFrom.y, this.home.y, t);
-        p.y = baseY + (t >= 1 ? 0 : Math.sin(Math.PI * local) * (0.55 + 0.35 * (k === hops - 1 ? 1 : 0)));
+        p.y = baseY + (t >= 1 ? 0 : Math.sin(Math.PI * local) * (this.retHeight + (this.retQuiet ? 0 : 0.35) * (k === hops - 1 ? 1 : 0)));
         if (t >= 1) {
           p.copy(this.home);
           this.mode = "home";
-          this.setExpr("happy", 1);
-          this.ev.fx("sparkle", this.topPoint(), 4);
-          this.ev.love(2);
+          if (!this.retQuiet) {
+            this.setExpr("happy", 1);
+            this.ev.fx("sparkle", this.topPoint(), 4);
+            this.ev.love(2);
+          }
+          const then = this.retThen;
+          this.retThen = null;
+          this.retQuiet = false;
+          this.retHops = 3;
+          this.retTime = 0.48;
+          this.retHeight = 0.55;
+          then?.();
         }
         break;
       }
@@ -770,12 +970,14 @@ export class Squishy {
       }
       return;
     }
-    if (this.idleFor > 24 && this.idleFor - dt <= 24) {
+    if (!this.autoSleep) {
+      this.idleFor = Math.min(this.idleFor, 20);
+    } else if (this.idleFor > 24 && this.idleFor - dt <= 24) {
       this.setExpr("sleepy", 1.6);
       this.talk = 1;
       sfx.yawn(this.pitch);
     }
-    if (this.idleFor > 26) {
+    if (this.autoSleep && this.idleFor > 26) {
       this.sleeping = true;
       this.zzAt = this.now + 0.5;
       return;
@@ -846,7 +1048,78 @@ export class Squishy {
     }
   }
 
-  private rebuild(): void {
+  private rebuild(geometry: boolean): void {
+    if (geometry) this.reshape();
+    // Whole-body motion
+    if (this.mode === "home") this.group.position.copy(this.home);
+    this.body.position.y = BOTTOM_Y + this.hopY;
+    this.body.rotation.set(0, this.turn.x * 0.25, this.tilt.x);
+    // Roll about the middle, not the bottom, so a roll looks like a roll.
+    const roll = this.tilt.x - Math.round(this.tilt.x / (Math.PI * 2)) * Math.PI * 2;
+    this.body.position.x = Math.sin(roll) * 0.45;
+    this.body.position.y += (1 - Math.cos(roll)) * 0.45;
+    // Turn to face where it is going, the short way round.
+    let dy = this.yawTarget - this.yaw;
+    dy -= Math.round(dy / (Math.PI * 2)) * Math.PI * 2;
+    this.yaw += dy * Math.min(1, this.frameDt * 6);
+    this.group.rotation.y = this.yaw;
+    this.stepHat();
+  }
+
+  private stepHat(): void {
+    const h = this.hat;
+    if (!h) return;
+    const dt = Math.max(1 / 240, this.frameDt);
+    // Where the hat is in the world, roughly; its change in speed kicks the wobble.
+    const p = (h.wob.parent ?? h.wob).position.clone().multiply(this.group.scale);
+    p.y += this.body.position.y * this.group.scale.y;
+    p.add(this.group.position);
+    if (h.fresh) {
+      h.fresh = false;
+      h.last.copy(p);
+    }
+    const v = p.clone().sub(h.last).divideScalar(dt);
+    const dv = v.clone().sub(h.lastV);
+    h.last.copy(p);
+    h.lastV.copy(v);
+    if (dv.length() < 40) {
+      h.wz.v += dv.x * 0.9;
+      h.wx.v -= dv.z * 0.9;
+      h.wy.v -= dv.y * 0.35;
+    }
+    for (const sp of [h.wx, h.wz, h.wy]) sp.step(dt);
+    h.wx.x = THREE.MathUtils.clamp(h.wx.x, -0.55, 0.55);
+    h.wz.x = THREE.MathUtils.clamp(h.wz.x, -0.55, 0.55);
+    h.wy.x = THREE.MathUtils.clamp(h.wy.x, -0.35, 0.35);
+    // Popped: flies up, spins round once, lands with a little squash.
+    if (h.popH > 0 || h.popV !== 0) {
+      h.popV -= 15 * dt;
+      h.popH += h.popV * dt;
+      if (h.popH <= 0) {
+        h.popH = 0;
+        if (h.popV < -1.2) {
+          h.wy.v -= h.popV * 0.6;
+          h.popV *= -0.25;
+          sfx.squeak(this.pitch * 1.4, 0.06, 0.15);
+        } else h.popV = 0;
+      }
+    }
+    if (h.spinV > 0) {
+      h.spin += h.spinV * dt;
+      if (h.spin >= Math.PI * 2) {
+        h.spin = 0;
+        h.spinV = 0;
+      }
+    }
+    h.wob.children[0].rotation.set(h.wx.x, 0, h.wz.x);
+    h.wob.children[0].scale.set(1 - h.wy.x * 0.5, 1 + h.wy.x, 1 - h.wy.x * 0.5);
+    h.pop.position.y = h.popH;
+    h.pop.rotation.y = h.spin;
+    const ctx: HatCtx = { energy: this.energy, sleeping: this.sleeping, dt };
+    h.model.animate?.(this.now, ctx);
+  }
+
+  private reshape(): void {
     const p = this.group.position;
     const inBasket = this.basket.r > 0 && Math.hypot(p.x - this.home.x, p.z - this.home.z) < 0.4 && p.y < this.home.y + 0.5;
     this.d.wallR = inBasket ? this.basket.r : 0;
@@ -887,14 +1160,6 @@ export class Squishy {
     this.faceGeo.computeBoundingSphere();
     this.placeParts(nrm);
     if (this.glow) this.material.emissiveIntensity = 0.32 + 0.14 * Math.sin(this.now * 2.1);
-    // Whole-body motion
-    if (this.mode === "home") this.group.position.copy(this.home);
-    this.body.position.y = BOTTOM_Y + this.hopY + (this.mode === "home" ? 0 : 0);
-    this.body.rotation.set(0, this.turn.x * 0.25, this.tilt.x);
-    // Roll about the middle, not the bottom, so a roll looks like a roll.
-    const roll = this.tilt.x - Math.round(this.tilt.x / (Math.PI * 2)) * Math.PI * 2;
-    this.body.position.x = Math.sin(roll) * 0.45;
-    this.body.position.y += (1 - Math.cos(roll)) * 0.45;
   }
 }
 

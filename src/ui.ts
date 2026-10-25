@@ -1,11 +1,14 @@
-// Everything drawn over the 3D view: the island title, the closet's love meter,
-// shelf and buttons, the squishy cards, the Squishy Book, the tutorial hand and
-// little toasts. Big, round, picture-first buttons for small hands; a 4 year
-// old can play without reading.
+// Everything drawn over the 3D view: the island title, the love meter, the
+// shelf of squishies (who is out playing and who is resting), the buttons, the
+// squishy cards, the Squishy Book, hats, places, settings, the tutorial hand
+// and little toasts. Big, round, picture-first buttons for small hands; a 4
+// year old can play without reading.
 
 import { CATALOG, FAMILIES, FINISH_NAME, type SquishyDef } from "./catalog";
 import { feelWord } from "./feel";
-import { LOVE_PER_BOX, NAME_MAX } from "./save";
+import { HATS, type HatDef } from "./hats";
+import { PLACES, type PlaceId } from "./places";
+import { LOVE_PER_BOX, NAME_MAX, ZOOM_MAX, ZOOM_MIN } from "./save";
 import type { Thumbs } from "./thumbs";
 
 const CSS = `
@@ -15,7 +18,7 @@ const CSS = `
 .ui .layer.on { display: block; }
 .ui .round { width: 50px; height: 50px; border-radius: 25px; background: rgba(255,255,255,0.8); box-shadow: 0 3px 0 rgba(200,110,150,0.35); display: grid; place-items: center; }
 .ui .round:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(200,110,150,0.35); }
-.ui .sound { position: absolute; top: calc(env(safe-area-inset-top) + 10px); right: 12px; }
+.ui .gear { position: absolute; top: calc(env(safe-area-inset-top) + 10px); right: 12px; }
 
 .ui .title .logo { position: absolute; top: calc(env(safe-area-inset-top) + 9vh); left: 0; right: 0; text-align: center; font-weight: 900; font-size: min(13vw, 64px); line-height: 0.95; color: #fff; text-shadow: 0 4px 0 #e86fa3, 0 8px 22px rgba(180,60,120,0.35); transform: rotate(-3deg); }
 .ui .title .logo small { display: block; font-size: 0.36em; margin-top: 10px; color: #fff; text-shadow: 0 2px 0 #b98ae8; transform: rotate(3deg); }
@@ -29,7 +32,8 @@ const CSS = `
 .ui .love .bar { width: min(34vw, 150px); height: 16px; border-radius: 8px; background: #ffe0ec; overflow: hidden; }
 .ui .love .fill { height: 100%; width: 0%; border-radius: 8px; background: linear-gradient(90deg, #ff8fb8, #ff4f8d); transition: width 0.35s cubic-bezier(.3,1.6,.5,1); }
 .ui .love .gift { width: 30px; height: 30px; flex: none; }
-.ui .stars { position: absolute; top: calc(env(safe-area-inset-top) + 66px); left: 14px; display: flex; align-items: center; gap: 4px; font-weight: 900; font-size: 16px; color: #d48a00; background: rgba(255,255,255,0.7); padding: 3px 10px 3px 5px; border-radius: 999px; }
+.ui .pills { position: absolute; top: calc(env(safe-area-inset-top) + 66px); left: 14px; display: flex; gap: 6px; }
+.ui .stars { display: flex; align-items: center; gap: 4px; font-weight: 900; font-size: 16px; color: #d48a00; background: rgba(255,255,255,0.7); padding: 3px 10px 3px 5px; border-radius: 999px; }
 .ui .stars svg { width: 22px; height: 22px; }
 
 .ui .plank { position: absolute; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom) + 84px); height: 12px; background: linear-gradient(180deg, #e8b98a, #c98d58); box-shadow: 0 4px 8px rgba(120,60,30,0.25); }
@@ -38,12 +42,25 @@ const CSS = `
 .ui .shelf button { display: inline-block; width: 72px; height: 74px; margin: 0 2px; padding: 0; background: none; position: relative; vertical-align: bottom; }
 .ui .shelf img { width: 72px; height: 72px; display: block; }
 .ui .shelf button.on::before { content: ""; position: absolute; left: 6px; right: 6px; bottom: 6px; height: 54px; border-radius: 50%; background: radial-gradient(closest-side, rgba(255,255,255,0.95), rgba(255,255,255,0)); }
+.ui .shelf button.rest img { filter: saturate(0.55) opacity(0.75); }
+.ui .shelf .tag { position: absolute; left: 50%; bottom: -2px; transform: translateX(-50%); padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 900; color: #fff; white-space: nowrap; }
+.ui .shelf .on .tag { background: #ff5f9c; }
+.ui .shelf .out .tag { background: #4fb3f0; }
+.ui .shelf .home { position: absolute; top: 2px; right: 0; width: 26px; height: 26px; border-radius: 13px; background: #fff; box-shadow: 0 2px 0 rgba(120,80,160,0.3); display: grid; place-items: center; padding: 0; }
+.ui .shelf .home svg { width: 16px; height: 16px; }
+.ui .jobs { display: flex; align-items: center; gap: 4px; font-weight: 900; font-size: 15px; color: #2a86c4; background: rgba(255,255,255,0.7); padding: 3px 10px 3px 6px; border-radius: 999px; transition: transform 0.2s; }
+.ui .jobs.beat { transform: scale(1.25); }
+.ui .jobs svg { width: 20px; height: 20px; }
 
 .ui .nav { position: absolute; left: 0; right: 0; bottom: 0; padding: 8px 16px calc(env(safe-area-inset-bottom) + 10px); display: flex; justify-content: space-around; align-items: flex-end; background: linear-gradient(180deg, rgba(255,255,255,0), rgba(255,255,255,0.55) 40%); }
-.ui .nav button { width: 76px; display: flex; flex-direction: column; align-items: center; gap: 2px; background: none; font-weight: 900; font-size: 13px; }
-.ui .nav .ico { width: 58px; height: 58px; border-radius: 20px; display: grid; place-items: center; background: linear-gradient(180deg, #c9a8f0, #9a72e0); box-shadow: 0 4px 0 #7350b8; position: relative; }
-.ui .nav .ico svg { width: 36px; height: 36px; }
-.ui .nav .open .ico { width: 68px; height: 68px; border-radius: 24px; background: linear-gradient(180deg, #ffb3d1, #ff5f9c); box-shadow: 0 5px 0 #c2346c; }
+.ui .nav button { width: 64px; display: flex; flex-direction: column; align-items: center; gap: 2px; background: none; font-weight: 900; font-size: 12.5px; }
+.ui .nav .ico { width: 52px; height: 52px; border-radius: 18px; display: grid; place-items: center; background: linear-gradient(180deg, #c9a8f0, #9a72e0); box-shadow: 0 4px 0 #7350b8; position: relative; }
+.ui .nav .ico svg { width: 34px; height: 34px; }
+.ui .nav .hats-btn .ico { background: linear-gradient(180deg, #ffd27a, #ffa83c); box-shadow: 0 4px 0 #d07a10; }
+.ui .nav .places-btn .ico { background: linear-gradient(180deg, #8fdcff, #4fb3f0); box-shadow: 0 4px 0 #2a86c4; }
+.ui .nav .open .ico { width: 64px; height: 64px; border-radius: 22px; background: linear-gradient(180deg, #ffb3d1, #ff5f9c); box-shadow: 0 5px 0 #c2346c; }
+.ui .nav .dot { position: absolute; top: -4px; right: -4px; width: 16px; height: 16px; border-radius: 8px; background: #ff4f8d; border: 2px solid #fff; display: none; }
+.ui .nav .dot.on { display: block; }
 .ui .nav .open.ready .ico { animation: wiggle 1.2s ease-in-out infinite; }
 .ui .nav .open.empty .ico { filter: grayscale(0.7) opacity(0.7); }
 .ui .nav .badge { position: absolute; top: -6px; right: -6px; min-width: 24px; height: 24px; padding: 0 6px; box-sizing: border-box; border-radius: 12px; background: #ffd84d; color: #7a4a00; font-size: 15px; font-weight: 900; display: grid; place-items: center; box-shadow: 0 2px 0 #d4a000; }
@@ -113,9 +130,39 @@ const CSS = `
 .ui .book .cell.wobble { animation: wiggle 0.5s; }
 .ui .book .pad { height: calc(env(safe-area-inset-bottom) + 30px); }
 
+.ui .sheet { position: absolute; inset: 0; display: none; pointer-events: auto; background: rgba(90,40,80,0.35); align-items: flex-end; justify-content: center; }
+.ui .sheet.on { display: flex; }
+.ui .sheet .panel { width: 100%; max-width: 520px; max-height: 82vh; overflow-y: auto; border-radius: 28px 28px 0 0; background: linear-gradient(180deg, #fff, #fff3f8); padding: 18px 16px calc(env(safe-area-inset-bottom) + 20px); box-sizing: border-box; animation: up 0.35s cubic-bezier(.3,1.4,.5,1); position: relative; touch-action: pan-y; }
+@keyframes up { from { transform: translateY(60%); } to { transform: none; } }
+.ui .sheet h1 { margin: 0 0 4px; font-size: 26px; font-weight: 900; color: #e2508c; text-align: center; }
+.ui .sheet .sub { text-align: center; font-weight: 800; font-size: 15px; color: #a0607f; margin-bottom: 12px; }
+.ui .sheet .close { position: absolute; top: 12px; right: 12px; }
+.ui .sheet .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.ui .sheet .cell { border-radius: 20px; background: #fff; box-shadow: 0 3px 0 #f3c6da; padding: 4px 4px 8px; font-weight: 900; font-size: 13px; color: #7350b8; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.ui .sheet .cell img, .ui .sheet .cell .none { width: 84px; height: 84px; display: block; }
+.ui .sheet .cell .none { display: grid; place-items: center; font-size: 36px; color: #e6c6da; }
+.ui .sheet .cell.on { background: #ffe9f2; box-shadow: 0 0 0 3px #ff5f9c, 0 3px 0 #f3c6da; }
+.ui .sheet .cell.missing img { filter: brightness(0) opacity(0.15); }
+.ui .sheet .cell.missing { color: #c9b0d6; background: #f6eef7; box-shadow: 0 3px 0 #e6d6ec; }
+.ui .sheet .cell.wobble { animation: wiggle 0.5s; }
+.ui .places { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.ui .places button { border-radius: 22px; overflow: hidden; background: #fff; box-shadow: 0 4px 0 #e6c6da; padding: 0 0 8px; font-weight: 900; font-size: 17px; color: #5a2a4a; }
+.ui .places button.on { box-shadow: 0 0 0 4px #ff5f9c, 0 4px 0 #e6c6da; }
+.ui .places svg { width: 100%; height: auto; display: block; margin-bottom: 6px; }
+.ui .places small { display: block; font-size: 12px; font-weight: 800; color: #a0607f; }
+.ui .row { display: flex; align-items: center; gap: 12px; margin: 14px 4px; font-weight: 900; font-size: 20px; }
+.ui .row .lbl { width: 72px; }
+.ui .row input[type=range] { flex: 1; pointer-events: auto; accent-color: #ff5f9c; height: 34px; }
+.ui .row .sm { width: 26px; text-align: center; font-size: 26px; color: #c58ab0; }
+.ui .toggle { padding: 10px 22px; border-radius: 999px; font-weight: 900; font-size: 18px; background: #ffe0ec; color: #e2508c !important; }
+.ui .toggle.off { background: #eee6ef; color: #9a8aa3 !important; }
+.ui .picks { display: flex; justify-content: center; gap: 12px; margin: 10px 0 16px; }
+.ui .picks button { width: 92px; border-radius: 20px; background: #fff; box-shadow: 0 3px 0 #f3c6da; padding: 4px 4px 8px; font-weight: 900; font-size: 13px; }
+.ui .picks img { width: 84px; height: 84px; display: block; }
 .ui .toast { position: absolute; top: 36%; left: 50%; transform: translate(-50%, -50%) scale(0.6); opacity: 0; font-weight: 900; font-size: 32px; color: #fff; text-align: center; text-shadow: 0 3px 0 #e2508c, 0 6px 18px rgba(200,60,120,0.5); transition: opacity 0.25s, transform 0.35s cubic-bezier(.3,1.7,.5,1); white-space: nowrap; }
 .ui .toast.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 @media (max-height: 700px) { .ui .hint { font-size: 20px; padding: 8px 16px; } .ui .hint small { font-size: 13px; } .ui .skip { top: calc(env(safe-area-inset-top) + 186px); } }
+@media (max-width: 350px) { .ui .nav button { width: 56px; font-size: 11px; } .ui .nav .ico { width: 46px; height: 46px; } .ui .nav .open .ico { width: 56px; height: 56px; } }
 @media (max-height: 600px) { .ui .shelf { height: 70px; } .ui .shelf img { width: 60px; height: 60px; } .ui .shelf button { width: 60px; height: 62px; } .ui .card img { width: 140px; height: 140px; } }
 `;
 
@@ -124,15 +171,26 @@ const HEART = `<svg class="heart" viewBox="0 0 32 32"><path d="M16 28C7 21 3 17 
 const GIFT = `<svg viewBox="0 0 40 40"><rect x="5" y="17" width="30" height="17" rx="5" fill="#ffe6c4" stroke="#fff" stroke-width="2"/><path d="M5 23h30" stroke="#e3b27a" stroke-width="2"/><rect x="3" y="11" width="34" height="8" rx="4" fill="#fff6e8" stroke="#fff" stroke-width="2"/><path d="M20 11v23" stroke="#ff7fb0" stroke-width="4"/><path d="M20 11c-4-7-11-6-9-1 1 2 5 2 9 1zM20 11c4-7 11-6 9-1-1 2-5 2-9 1z" fill="#ff7fb0"/></svg>`;
 const BOOK = `<svg viewBox="0 0 40 40"><path d="M7 7c5-2 9-1 13 2v24c-4-3-8-4-13-2z" fill="#fff"/><path d="M33 7c-5-2-9-1-13 2v24c4-3 8-4 13-2z" fill="#fff4fb"/><path d="M12 15c1.5-1 3.5-1 5 0M12 20c1.5-1 3.5-1 5 0" stroke="#c9a8f0" stroke-width="2" stroke-linecap="round"/><circle cx="26.5" cy="17" r="4" fill="#ffb3d1"/></svg>`;
 const ISLAND = `<svg viewBox="0 0 40 40"><ellipse cx="20" cy="30" rx="16" ry="5" fill="#8fd8f0"/><ellipse cx="20" cy="27" rx="12" ry="5" fill="#ffe2b0"/><ellipse cx="20" cy="25" rx="9" ry="3.5" fill="#bfeaa0"/><path d="M19 25c0-6 1-11 3-14" stroke="#c98d58" stroke-width="2.4" fill="none" stroke-linecap="round"/><path d="M22 11c-4-2-8-1-9 2 3-1 6 0 9-2zM22 11c3-3 8-3 9 0-3-1-6 0-9 0zM22 11c1 3 0 6-3 8 1-3 1-6 3-8z" fill="#7fc65a"/></svg>`;
+const HAT = `<svg viewBox="0 0 40 40"><path d="M8 29c0-8 5-17 12-17s12 9 12 17z" fill="#fff"/><path d="M5 29h30c0 3-6 4-15 4S5 32 5 29z" fill="#fff6e0"/><path d="M9 24h22" stroke="#ff7fb0" stroke-width="4"/><circle cx="20" cy="10" r="4" fill="#ff7fb0"/></svg>`;
+const PLACE = `<svg viewBox="0 0 40 40"><path d="M4 27c5-3 9 3 16 0s11 3 16 0v7H4z" fill="#fff"/><path d="M20 6v18" stroke="#fff6e0" stroke-width="2.5"/><path d="M21 7l10 15H21z" fill="#fff"/><path d="M19 10l-8 12h8z" fill="#ffe0ec"/><path d="M10 24h20l-3 4H13z" fill="#ffd27a"/></svg>`;
+const GEAR = `<svg width="28" height="28" viewBox="0 0 28 28"><path d="M14 4l2 .3.7 2.4 2 1 2.3-1 1.6 1.6-1 2.3 1 2 2.4.7v2.3l-2.4.7-1 2 1 2.3-1.6 1.6-2.3-1-2 1-.7 2.4h-2.3l-.7-2.4-2-1-2.3 1L6.4 21l1-2.3-1-2L4 16v-2.3l2.4-.7 1-2-1-2.3L8 7.1l2.3 1 2-1L13 4.3z" fill="#e2508c"/><circle cx="14" cy="14.8" r="4" fill="#fff"/></svg>`;
+const JOBS = `<svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="19" rx="4" fill="#8fdcff"/><rect x="8" y="1.5" width="8" height="4" rx="2" fill="#2a86c4"/><path d="M8 13l3 3 5-6" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const HOUSE = `<svg viewBox="0 0 20 20"><path d="M3 10l7-6 7 6v7H3z" fill="#9a72e0"/><rect x="8" y="12" width="4" height="5" rx="1" fill="#fff"/></svg>`;
+/** Little pictures of each place for the place picker. */
+const PLACE_PICS: Record<PlaceId, string> = {
+  table: `<svg viewBox="0 0 160 100"><rect width="160" height="100" fill="#ffd3ea"/><ellipse cx="80" cy="92" rx="90" ry="30" fill="#ffe6ee"/><rect x="104" y="44" width="34" height="26" rx="6" fill="#fff3f8"/><rect x="109" y="30" width="24" height="16" rx="5" fill="#ffc6df"/><circle cx="121" cy="27" r="4" fill="#ff4f6a"/><ellipse cx="48" cy="70" rx="17" ry="13" fill="#fff"/><circle cx="48" cy="55" r="4" fill="#ff9ec4"/><path d="M64 66l12-8" stroke="#fff" stroke-width="5" stroke-linecap="round"/><ellipse cx="80" cy="84" rx="16" ry="7" fill="#e3b27a"/><ellipse cx="80" cy="78" rx="12" ry="9" fill="#f2a9cf"/></svg>`,
+  beach: `<svg viewBox="0 0 160 100"><rect width="160" height="100" fill="#9fdcff"/><circle cx="128" cy="22" r="13" fill="#fff3b0"/><rect y="46" width="160" height="16" fill="#5cc8ec"/><path d="M0 60c20-4 40 4 60 0s40 4 60 0 30 2 40 0v40H0z" fill="#f8deaa"/><path d="M28 70c2-14 4-24 12-34" stroke="#c98d58" stroke-width="5" fill="none"/><path d="M40 36c-10-6-22-2-24 4 8-3 16-2 24-4zM40 36c6-9 18-8 22-2-8-2-15 0-22 2zM40 36c0 9-4 15-10 18 2-8 5-13 10-18z" fill="#5cbf4a"/><path d="M100 78l18-22 18 22z" fill="#ff7fb0"/><path d="M118 56v26" stroke="#fff" stroke-width="2.5"/><rect x="66" y="74" width="20" height="12" rx="2" fill="#efc98a"/><rect x="69" y="66" width="5" height="9" fill="#efc98a"/><rect x="78" y="66" width="5" height="9" fill="#efc98a"/></svg>`,
+  boat: `<svg viewBox="0 0 160 100"><rect width="160" height="100" fill="#bfe6ff"/><rect y="62" width="160" height="38" fill="#3fa9e0"/><path d="M10 72c10 2 20-2 30 0s20 2 30 0" stroke="#fff" stroke-width="3" fill="none" opacity=".6"/><path d="M30 66h100l-14 22H44z" fill="#e8b98a"/><path d="M28 64h104" stroke="#fff" stroke-width="5" stroke-linecap="round"/><path d="M80 12v52" stroke="#c98d58" stroke-width="4"/><path d="M82 14c22 10 30 26 28 44H82z" fill="#fff"/><path d="M82 40h28v6H82z" fill="#ffc6df"/><path d="M80 12l14 4-14 4z" fill="#ff5f9c"/></svg>`,
+  room: `<svg viewBox="0 0 160 100"><rect width="160" height="100" fill="#fde3ee"/><rect y="70" width="160" height="30" fill="#e9c49a"/><rect x="58" y="14" width="44" height="30" rx="3" fill="#bfe6ff" stroke="#fff" stroke-width="4"/><rect x="34" y="46" width="64" height="26" rx="8" fill="#9fc4ff"/><rect x="34" y="56" width="64" height="12" rx="4" fill="#b8d4ff"/><rect x="112" y="20" width="22" height="50" rx="3" fill="#e8b98a"/><rect x="116" y="26" width="4" height="12" fill="#ff7fb0"/><rect x="122" y="28" width="4" height="10" fill="#7fc8f0"/><rect x="116" y="46" width="4" height="12" fill="#ffd84d"/><ellipse cx="78" cy="88" rx="40" ry="8" fill="#ffc6df"/></svg>`,
+};
 const STAR = `<svg viewBox="0 0 24 24"><path d="M12 2l3 6.5 7 .8-5.2 4.8 1.4 7L12 17.6 5.8 21.1l1.4-7L2 9.3l7-.8z" fill="#ffd84d" stroke="#fff" stroke-width="1.5"/></svg>`;
 const PEN = `<svg width="18" height="18" viewBox="0 0 24 24"><path d="M4 20l1-5L16 4l4 4L9 19z" fill="#ff7fb0"/><path d="M4 20l1-5 4 4z" fill="#ffd6e6"/></svg>`;
 const CLOSE = `<svg width="24" height="24" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" stroke="#e2508c" stroke-width="3.5" stroke-linecap="round"/></svg>`;
-const SPEAKER_ON = `<svg width="26" height="26" viewBox="0 0 26 26"><path d="M4 10h4l6-5v16l-6-5H4z" fill="#e2508c"/><path d="M18 9c2 2 2 6 0 8M21 6c4 4 4 10 0 14" stroke="#e2508c" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg>`;
-const SPEAKER_OFF = `<svg width="26" height="26" viewBox="0 0 26 26"><path d="M4 10h4l6-5v16l-6-5H4z" fill="#b48aa3"/><path d="M18 10l6 6M24 10l-6 6" stroke="#b48aa3" stroke-width="2.4" stroke-linecap="round"/></svg>`;
 /** A pointing hand, finger tip at the top left. */
 const HAND = `<svg viewBox="0 0 64 64"><path d="M22 6c3 0 5 2 5 5v17l3-1c2-1 5 0 6 2 2-1 5 0 6 2 2-1 6 0 6 3v12c0 9-6 15-15 15h-3c-6 0-10-3-13-8l-8-13c-1-2 0-5 3-5 2 0 3 1 4 2l2 3V11c0-3 2-5 4-5z" fill="#fff" stroke="#5a2a4a" stroke-width="3" stroke-linejoin="round"/><path d="M30 29v8M36 31v7M42 33v6" stroke="#5a2a4a" stroke-width="2.5" stroke-linecap="round"/></svg>`;
 
 export type Screen = "title" | "closet" | "box";
+export type ShelfState = "held" | "out" | "rest";
 export type HandMove = "press" | "pet" | "tickle" | "toss" | "tap" | "hug";
 
 export interface UiHandlers {
@@ -141,9 +199,23 @@ export interface UiHandlers {
   openBox(): void;
   openBook(): void;
   goIsland(): void;
+  /** Tapped a squishy on the shelf. */
+  shelfTap(id: string): void;
+  /** Sent a friend in to rest from the shelf. */
+  sendIn(id: string): void;
   hold(id: string): void;
   rename(id: string, name: string): void;
   skipTutorial(): void;
+  /** The hats sheet: which hat the held squishy wears, and every hat. */
+  hats(): { wearing: string | null; have: string[]; who: string };
+  wearHat(id: string | null): void;
+  goPlace(id: PlaceId): void;
+  place(): PlaceId;
+  zoom(): number;
+  setZoom(z: number): void;
+  sound(): boolean;
+  /** Something opened or closed over the game. */
+  covered(on: boolean): void;
 }
 
 export interface CardInfo {
@@ -175,7 +247,9 @@ export class Ui {
   private toastEl: HTMLElement;
   private toastTimer = 0;
   private cardDone: (() => void) | null = null;
-  private soundBtns: HTMLButtonElement[] = [];
+  private sheetEl: HTMLElement;
+  private jobsEl: HTMLElement;
+  private hatsDot: HTMLElement;
 
   constructor(
     private h: UiHandlers,
@@ -189,17 +263,19 @@ export class Ui {
     this.root.className = "ui";
     this.root.innerHTML = `
       <div class="layer title">
-        <div class="logo">Squishy<br>Closet!<small>Squishy Island</small></div>
+        <div class="logo">Aurora's<br>World<small>Squishy Island</small></div>
         <button class="play">Play!</button>
       </div>
       <div class="layer closet">
         <div class="love">${HEART}<div class="bar"><div class="fill"></div></div><span class="gift">${GIFT}</span></div>
-        <div class="stars">${STAR}<span>0</span></div>
+        <div class="pills"><div class="stars">${STAR}<span>0</span></div><div class="jobs">${JOBS}<span>0</span></div></div>
         <div class="plank"></div>
         <div class="shelf"></div>
         <div class="nav">
           <button class="book-btn"><span class="ico">${BOOK}</span>Book</button>
+          <button class="hats-btn"><span class="ico">${HAT}<i class="dot"></i></span>Hats</button>
           <button class="open"><span class="ico">${GIFT}<span class="badge">0</span></span>Open</button>
+          <button class="places-btn"><span class="ico">${PLACE}</span>Places</button>
           <button class="island-btn"><span class="ico">${ISLAND}</span>Island</button>
         </div>
       </div>
@@ -208,6 +284,7 @@ export class Ui {
       <button class="skip">Skip</button>
       <div class="hand">${HAND}</div>
       <div class="modal"></div>
+      <div class="sheet"></div>
       <div class="book"></div>
       <div class="toast"></div>`;
     document.body.appendChild(this.root);
@@ -225,21 +302,27 @@ export class Ui {
     this.modal = q(".modal");
     this.bookEl = q(".book");
     this.toastEl = q(".toast");
+    this.sheetEl = q(".sheet");
+    this.jobsEl = q(".jobs");
+    this.hatsDot = q(".hats-btn .dot");
+    q(".hats-btn").addEventListener("click", () => this.hatsSheet());
+    q(".places-btn").addEventListener("click", () => this.placesSheet());
+    this.sheetEl.addEventListener("click", (e) => {
+      if (e.target === this.sheetEl) this.closeSheet();
+    });
     q(".play").addEventListener("click", () => h.play());
     this.openBtn.addEventListener("click", () => h.openBox());
     q(".book-btn").addEventListener("click", () => h.openBook());
     q(".island-btn").addEventListener("click", () => h.goIsland());
     this.skipEl.addEventListener("click", () => h.skipTutorial());
-    // One sound button, on every screen.
-    const soundBtn = document.createElement("button");
-    soundBtn.className = "round sound";
-    soundBtn.setAttribute("aria-label", "Sound");
-    soundBtn.innerHTML = sound ? SPEAKER_ON : SPEAKER_OFF;
-    soundBtn.addEventListener("click", () => {
-      soundBtn.innerHTML = h.toggleSound() ? SPEAKER_ON : SPEAKER_OFF;
-    });
-    this.root.appendChild(soundBtn);
-    this.soundBtns.push(soundBtn);
+    // One settings button, on every screen: sound and zoom.
+    const gear = document.createElement("button");
+    gear.className = "round gear";
+    gear.setAttribute("aria-label", "Settings");
+    gear.innerHTML = GEAR;
+    gear.addEventListener("click", () => this.settingsSheet());
+    this.root.appendChild(gear);
+    void sound;
     this.modal.addEventListener("click", (e) => {
       if (e.target === this.modal) this.closeCard();
     });
@@ -250,7 +333,24 @@ export class Ui {
   }
 
   get busy(): boolean {
-    return this.modal.classList.contains("on") || this.bookEl.classList.contains("on");
+    return this.modal.classList.contains("on") || this.bookEl.classList.contains("on") || this.sheetEl.classList.contains("on");
+  }
+
+  private coverChanged(): void {
+    this.h.covered(this.busy);
+  }
+
+  setJobs(n: number, beat = false): void {
+    this.jobsEl.querySelector("span")!.textContent = String(n);
+    if (beat) {
+      this.jobsEl.classList.add("beat");
+      setTimeout(() => this.jobsEl.classList.remove("beat"), 220);
+    }
+  }
+
+  /** A red dot on Hats when there is a new hat to try. */
+  newHat(on: boolean): void {
+    this.hatsDot.classList.toggle("on", on);
   }
 
   setLove(love: number): void {
@@ -273,19 +373,176 @@ export class Ui {
     this.starCount.textContent = String(n);
   }
 
-  /** The closet shelf: every squishy you have, newest first. Tap one to hold it. */
-  setShelf(ids: string[], active: string | null): void {
+  /**
+   * The closet shelf: every squishy you have. The one you hold and the friends
+   * out playing come first; tap a friend to hold it, tap a resting one to bring
+   * it out, tap the little house to send a friend in to rest.
+   */
+  setShelf(items: { id: string; state: ShelfState; hat: string | null }[]): void {
+    const left = this.shelf.scrollLeft;
     this.shelf.innerHTML = "";
-    for (const id of ids) {
+    for (const it of items) {
       const b = document.createElement("button");
-      b.className = id === active ? "on" : "";
+      b.className = it.state === "held" ? "on" : it.state;
       const img = document.createElement("img");
       img.alt = "";
       b.appendChild(img);
-      this.thumbs.want(id, (url) => (img.src = url));
-      b.addEventListener("click", () => this.h.hold(id));
+      this.thumbs.want(it.id, (url) => (img.src = url), it.hat);
+      if (it.state !== "rest") {
+        const tag = document.createElement("span");
+        tag.className = "tag";
+        tag.textContent = it.state === "held" ? "Holding" : "Playing";
+        b.appendChild(tag);
+      }
+      b.addEventListener("click", () => this.h.shelfTap(it.id));
       this.shelf.appendChild(b);
+      if (it.state === "out") {
+        const home = document.createElement("span");
+        home.className = "home";
+        home.setAttribute("role", "button");
+        home.setAttribute("aria-label", "Rest");
+        home.innerHTML = HOUSE;
+        home.addEventListener("click", (e) => {
+          e.stopPropagation();
+          this.h.sendIn(it.id);
+        });
+        b.appendChild(home);
+      }
     }
+    this.shelf.scrollLeft = left;
+  }
+
+  // ---- sheets that slide up ---------------------------------------------------
+
+  private openSheet(html: string): HTMLElement {
+    this.sheetEl.innerHTML = `<div class="panel"><button class="round close" aria-label="Close">${CLOSE}</button>${html}</div>`;
+    this.sheetEl.classList.add("on");
+    this.sheetEl.querySelector(".close")!.addEventListener("click", () => this.closeSheet());
+    this.coverChanged();
+    return this.sheetEl.querySelector(".panel") as HTMLElement;
+  }
+
+  closeSheet(): void {
+    if (!this.sheetEl.classList.contains("on")) return;
+    this.sheetEl.classList.remove("on");
+    this.sheetEl.innerHTML = "";
+    this.coverChanged();
+  }
+
+  /** Every hat; tap one you have to put it on the one you hold. */
+  hatsSheet(): void {
+    this.newHat(false);
+    const info = this.h.hats();
+    const cell = (h: HatDef | null) => {
+      const have = !h || info.have.includes(h.id);
+      const on = (h?.id ?? null) === info.wearing;
+      return `<button class="cell${on ? " on" : ""}${have ? "" : " missing"}" data-id="${h?.id ?? ""}">${h ? `<img alt="">` : `<span class="none">✕</span>`}${h ? (have ? esc(h.name) : "?") : "No hat"}</button>`;
+    };
+    const panel = this.openSheet(
+      `<h1>Hats</h1><div class="sub">For ${esc(info.who)} · You have ${info.have.length} of ${HATS.length}</div>
+       <div class="grid">${cell(null)}${HATS.map(cell).join("")}</div>`,
+    );
+    for (const b of panel.querySelectorAll<HTMLButtonElement>(".cell")) {
+      const id = b.dataset.id || null;
+      const img = b.querySelector("img");
+      if (id && img) this.thumbs.wantHat(id, (url) => (img.src = url));
+      b.addEventListener("click", () => {
+        if (id && !info.have.includes(id)) {
+          b.classList.remove("wobble");
+          void b.offsetWidth;
+          b.classList.add("wobble");
+          const h = HATS.find((x) => x.id === id)!;
+          this.toast(h.from === "box" ? "Find it in a box!" : "Friends find it doing jobs!", 1500);
+          return;
+        }
+        this.h.wearHat(id);
+        this.closeSheet();
+      });
+    }
+  }
+
+  placesSheet(): void {
+    const here = this.h.place();
+    const panel = this.openSheet(
+      `<h1>Places</h1><div class="sub">Where do you want to play?</div>
+       <div class="places">${PLACES.map((p) => `<button class="${p.id === here ? "on" : ""}" data-id="${p.id}">${PLACE_PICS[p.id]}${esc(p.name)}<small>${p.jobs.length} jobs to do</small></button>`).join("")}</div>`,
+    );
+    for (const b of panel.querySelectorAll<HTMLButtonElement>(".places button")) {
+      b.addEventListener("click", () => {
+        this.closeSheet();
+        this.h.goPlace(b.dataset.id as PlaceId);
+      });
+    }
+  }
+
+  settingsSheet(): void {
+    const on = this.h.sound();
+    const z = this.h.zoom();
+    const panel = this.openSheet(
+      `<h1>Settings</h1>
+       <div class="row"><span class="lbl">Sound</span><button class="toggle${on ? "" : " off"}">${on ? "On" : "Off"}</button></div>
+       <div class="row"><span class="lbl">Zoom</span><span class="sm">−</span><input type="range" min="${ZOOM_MIN}" max="${ZOOM_MAX}" step="0.01" value="${z}" aria-label="Zoom"><span class="sm">+</span></div>`,
+    );
+    const t = panel.querySelector(".toggle") as HTMLButtonElement;
+    t.addEventListener("click", () => {
+      const now = this.h.toggleSound();
+      t.textContent = now ? "On" : "Off";
+      t.classList.toggle("off", !now);
+    });
+    const r = panel.querySelector("input") as HTMLInputElement;
+    r.addEventListener("input", () => this.h.setZoom(Number(r.value)));
+  }
+
+  /** Four are out already: pick a friend to go in and rest. Resolves with it, or null. */
+  chooseRest(friends: { id: string; name: string; hat: string | null }[], incoming: string): Promise<string | null> {
+    return new Promise((resolve) => {
+      const panel = this.openSheet(
+        `<h1>Who goes to rest?</h1><div class="sub">Only 4 can play at once. Tap one to rest so ${esc(incoming)} can come out.</div>
+         <div class="picks">${friends.map((f) => `<button data-id="${f.id}"><img alt="">${esc(f.name)}</button>`).join("")}</div>`,
+      );
+      let done = false;
+      const finish = (v: string | null) => {
+        if (done) return;
+        done = true;
+        this.closeSheet();
+        resolve(v);
+      };
+      for (const b of panel.querySelectorAll<HTMLButtonElement>(".picks button")) {
+        const f = friends.find((x) => x.id === b.dataset.id)!;
+        this.thumbs.want(f.id, (url) => (b.querySelector("img")!.src = url), f.hat);
+        b.addEventListener("click", () => finish(f.id));
+      }
+      panel.querySelector(".close")!.addEventListener("click", () => finish(null));
+      const off = () => {
+        if (!this.sheetEl.classList.contains("on")) finish(null);
+        else requestAnimationFrame(off);
+      };
+      requestAnimationFrame(off);
+    });
+  }
+
+  /** A new hat! Resolves true to put it on now. */
+  hatCard(id: string, name: string): Promise<boolean> {
+    this.modal.innerHTML = `
+      <div class="card">
+        <div class="new">New hat!</div>
+        <img alt="">
+        <div class="name"><input readonly value="${esc(name)}" aria-label="Hat"></div>
+        <div class="kind">Your friends found it!</div>
+        <div class="btns" style="margin-top:14px"><button class="big alt later">Later</button><button class="big wear">Wear it!</button></div>
+      </div>`;
+    this.thumbs.wantHat(id, (url) => (this.modal.querySelector("img")!.src = url));
+    this.modal.classList.add("on");
+    this.coverChanged();
+    return new Promise((resolve) => {
+      let wear = false;
+      this.cardDone = () => resolve(wear);
+      this.modal.querySelector(".later")!.addEventListener("click", () => this.closeCard());
+      this.modal.querySelector(".wear")!.addEventListener("click", () => {
+        wear = true;
+        this.closeCard();
+      });
+    });
   }
 
   hint(text: string | null, sub?: string, dots?: { done: number; total: number }): void {
@@ -355,6 +612,7 @@ export class Ui {
       if (!info.stars) input.focus();
     });
     this.modal.classList.add("on");
+    this.coverChanged();
     return new Promise((resolve) => {
       this.cardDone = () => {
         commit();
@@ -375,6 +633,7 @@ export class Ui {
     const done = this.cardDone;
     this.cardDone = null;
     done?.();
+    this.coverChanged();
   }
 
   /** The Squishy Book: every squishy, with shadows for ones not found yet. */
@@ -393,6 +652,7 @@ export class Ui {
     this.bookEl.innerHTML = html;
     this.bookEl.scrollTop = 0;
     this.bookEl.classList.add("on");
+    this.coverChanged();
     this.bookEl.querySelector(".close")!.addEventListener("click", () => this.closeBook());
     for (const cell of this.bookEl.querySelectorAll<HTMLButtonElement>(".cell")) {
       const id = cell.dataset.id!;
@@ -412,5 +672,6 @@ export class Ui {
 
   closeBook(): void {
     this.bookEl.classList.remove("on");
+    this.coverChanged();
   }
 }

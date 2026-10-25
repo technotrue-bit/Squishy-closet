@@ -1,7 +1,9 @@
-// Squishy Closet! Squishy Island is the title. Play opens your first squishy
+// Aurora's World. Squishy Island is the title. Play opens your first squishy
 // from its steamer box, a little tutorial teaches the five ways to play, and
-// love you give earns more boxes. Every squishy you find goes on the closet
-// shelf and into the Squishy Book. Everything stays on this device.
+// love you give earns more boxes. Up to four squishies are out at once: the
+// one you hold, and friends who play, do jobs and come up to visit behind it.
+// Play at the tea table, the beach, on a sailing boat or in the living room,
+// and dress everyone in hats. Everything stays on this device.
 
 import * as THREE from "three";
 import { Gestures, type GestureEvent } from "./gestures";
@@ -9,14 +11,18 @@ import { Squishy, type Bounds } from "./squishy";
 import { buildStage, BASKET_FLOOR, BASKET_WALL, LID_CLOSED, LID_REST } from "./scene";
 import { buildIsland } from "./island";
 import { Effects } from "./fx";
-import { Ui, type HandMove, type Screen } from "./ui";
+import { Ui, type HandMove, type Screen, type ShelfState } from "./ui";
 import { Thumbs } from "./thumbs";
 import { CATALOG, defById, type SquishyDef } from "./catalog";
-import { openBox } from "./boxes";
-import { addLove, cleanName, collect, loadSave, nameOf, storeSave } from "./save";
+import { isOctober, openBox } from "./boxes";
+import { addHat, addLove, bringOut, cleanName, collect, holdSquishy, loadSave, nameOf, sendIn, storeSave, TEAM_MAX, ZOOM_MAX, ZOOM_MIN } from "./save";
 import * as sfx from "./audio";
 import { BOTTOM_Y } from "./bao";
-import { fitCamera, flyBounds } from "./view";
+import { fitCamera, flyBounds, swayCamera } from "./view";
+import { placeScene } from "./placeScenes";
+import { hatsEarned, placeById, type PlaceId } from "./places";
+import { boxHat, hatById } from "./hats";
+import { Crew } from "./friends";
 
 const app = document.getElementById("app")!;
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
@@ -38,6 +44,7 @@ const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 60);
 let screen: Screen = "title";
 const persist = () => storeSave(save);
 const ownedIds = () => Object.keys(save.owned).sort((a, b) => save.owned[b].got - save.owned[a].got);
+const hatOf = (id: string | null) => (id && save.owned[id]?.hat) || null;
 
 // ---- the tutorial -----------------------------------------------------
 
@@ -72,6 +79,8 @@ function finishTutorial(): void {
     save.boxes = 1;
     save.love = 0;
   }
+  // And a party hat to wear.
+  if (addHat(save, "party")) ui.newHat(true);
   persist();
   ui.showSkip(false);
   ui.hand(null);
@@ -101,6 +110,7 @@ function refreshMeters(): void {
   ui.setLove(save.love);
   ui.setBoxes(save.boxes);
   ui.setStars(save.stars);
+  ui.setJobs(save.jobs[save.place] ?? 0);
 }
 
 function giveLove(n: number): void {
@@ -138,20 +148,153 @@ const squishy = new Squishy(startDef, {
 squishy.home.set(0, BASKET_FLOOR - BOTTOM_Y, 0);
 squishy.group.position.copy(squishy.home);
 Object.assign(squishy.basket, BASKET_WALL);
+squishy.setHat(hatOf(save.active));
 stage.scene.add(squishy.group);
 
+// ---- friends and places -------------------------------------------------
+
+const crew = new Crew(stage.scene, squishy, stage.shadowMat, {
+  fx: (kind, at, count) => fx.emit(kind, at, count),
+  love: (n) => {
+    if (screen === "closet") giveLove(n);
+  },
+  jobDone: (f, job) => {
+    if (screen !== "closet") return;
+    save.jobs[save.place] = (save.jobs[save.place] ?? 0) + 1;
+    ui.setJobs(save.jobs[save.place], true);
+    giveLove(6);
+    if (!ui.busy && !tutorialStep()) ui.toast(`${nameOf(save, f.id)} ${job.done}!`, 1800);
+    void hatsFromJobs();
+  },
+  said: (text) => {
+    if (!ui.busy && !tutorialStep()) ui.toast(text, 1600);
+  },
+  name: (id) => nameOf(save, id),
+});
+
+function syncTeam(): void {
+  crew.setTeam(
+    save.team.filter((id) => defById(id)).map((id) => ({ id, def: defById(id)!, hat: hatOf(id) })),
+  );
+}
+
+function refreshShelf(): void {
+  const rank = (id: string): number => (id === save.active ? 0 : save.team.includes(id) ? 1 : 2);
+  const ids = ownedIds().sort((a, b) => rank(a) - rank(b));
+  ui.setShelf(
+    ids.map((id) => ({
+      id,
+      state: (id === save.active ? "held" : save.team.includes(id) ? "out" : "rest") as ShelfState,
+      hat: hatOf(id),
+    })),
+  );
+}
+
+let hatQueue = Promise.resolve();
+/** New hats from jobs at this place: show each one. */
+function hatsFromJobs(): Promise<void> {
+  const place = placeById(save.place);
+  for (const id of hatsEarned(place, save.jobs[save.place] ?? 0, save.hats)) {
+    addHat(save, id);
+    persist();
+    showNewHat(id);
+  }
+  return hatQueue;
+}
+
+function showNewHat(id: string): void {
+  const hat = hatById(id);
+  if (!hat) return;
+  ui.newHat(true);
+  hatQueue = hatQueue.then(async () => {
+    while (screen !== "closet" || ui.busy) await new Promise((r) => setTimeout(r, 400));
+    sfx.chime(true);
+    const wear = await ui.hatCard(id, hat.name);
+    if (wear) wearHat(id);
+  });
+}
+
+function wearHat(id: string | null): void {
+  const active = save.active;
+  if (!active || !save.owned[active]) return;
+  if (id) save.owned[active].hat = id;
+  else delete save.owned[active].hat;
+  persist();
+  squishy.setHat(id);
+  squishy.hello();
+  fx.emit("sparkle", squishy.topPoint(), 10);
+  sfx.pop();
+  refreshShelf();
+}
+
+let placeId: PlaceId = save.place;
+function goPlace(id: PlaceId, quiet = false): void {
+  placeId = id;
+  save.place = id;
+  persist();
+  const p = placeScene(id);
+  stage.setPlace(p);
+  crew.setPlace(p);
+  ui.setJobs(save.jobs[id] ?? 0);
+  if (!quiet) {
+    sfx.whoosh();
+    sfx.chime(false);
+    squishy.hello();
+    fx.emit("sparkle", squishy.topPoint(), 12);
+    ui.toast(placeById(id).name, 1400);
+  }
+}
+
+/** Makes `id` the one you hold; the one you held joins the friends if there is room. */
 function hold(id: string): void {
   const def = defById(id);
   if (!def || !save.owned[id] || screen !== "closet") return;
   if (save.active !== id) {
-    save.active = id;
-    squishy.setDesign(def);
+    holdSquishy(save, id);
+    squishy.setDesign(def, hatOf(id));
     persist();
-    ui.setShelf(ownedIds(), save.active);
-    fx.emit("sparkle", squishy.topPoint(), 6);
+    syncTeam();
+    refreshShelf();
+    fx.emit("sparkle", squishy.topPoint(), 8);
   }
+  squishy.yawTarget = 0;
   squishy.hello();
   ui.toast(nameOf(save, id), 1200);
+}
+
+async function shelfTap(id: string): Promise<void> {
+  if (screen !== "closet" || !save.owned[id]) return;
+  sfx.unlockAudio();
+  if (id === save.active || save.team.includes(id)) {
+    hold(id);
+    return;
+  }
+  // A resting one comes out to play.
+  let swapOut: string | undefined;
+  if (save.team.length >= TEAM_MAX) {
+    const picked = await ui.chooseRest(
+      save.team.map((t) => ({ id: t, name: nameOf(save, t), hat: hatOf(t) })),
+      nameOf(save, id),
+    );
+    if (!picked) return;
+    swapOut = picked;
+  }
+  if (!bringOut(save, id, swapOut)) return;
+  persist();
+  syncTeam();
+  refreshShelf();
+  sfx.pop();
+  ui.toast(`${nameOf(save, id)} came out to play!`, 1500);
+}
+
+function restFriend(id: string): void {
+  if (!save.team.includes(id)) return;
+  sendIn(save, id);
+  persist();
+  syncTeam();
+  refreshShelf();
+  sfx.squeak(1.1, 0.1, 0.2);
+  ui.toast(`${nameOf(save, id)} went to rest`, 1400);
 }
 
 // ---- opening a box ----------------------------------------------------
@@ -201,9 +344,12 @@ function popOut(): void {
   if (!first) save.boxes = Math.max(0, save.boxes - 1);
   const got = collect(save, def.id, Date.now());
   const prevActive = save.active;
-  if (got.isNew) save.active = def.id;
+  // A new one is held right away; the one you held joins the friends.
+  if (got.isNew) holdSquishy(save, def.id);
+  const hat = first ? null : boxHat(save.hats, isOctober(new Date()), Math.random);
+  if (hat) addHat(save, hat);
   persist();
-  squishy.setDesign(def);
+  squishy.setDesign(def, hatOf(def.id));
   squishy.group.visible = true;
   popScale = 0.15;
   squishy.popIn();
@@ -218,12 +364,14 @@ function popOut(): void {
     // A repeat goes to the star jar; you keep holding the one you had.
     if (!got.isNew && prevActive && prevActive !== def.id) {
       const back = defById(prevActive);
-      if (back) squishy.setDesign(back);
+      if (back) squishy.setDesign(back, hatOf(prevActive));
     }
     reveal = null;
     pointAtOpen = false;
+    syncTeam();
     setScreen("closet");
     squishy.hello();
+    if (hat) showNewHat(hat);
   }, 1100);
 }
 
@@ -233,9 +381,11 @@ function setScreen(s: Screen): void {
   screen = s;
   ui.show(s);
   ui.hand(null);
+  crew.paused = s !== "closet";
+  for (const f of crew.friends) f.sq.group.visible = s === "closet";
   if (s === "closet") {
     refreshMeters();
-    ui.setShelf(ownedIds(), save.active);
+    refreshShelf();
     if (tutorialStep()) showTutorial();
     else if (pointAtOpen && save.boxes > 0) ui.hint("You earned a box!", "Tap Open to see who's inside");
     else ui.hint(null);
@@ -277,6 +427,23 @@ const ui = new Ui(
       setScreen("title");
     },
     hold,
+    shelfTap: (id) => void shelfTap(id),
+    sendIn: restFriend,
+    hats: () => ({ wearing: hatOf(save.active), have: save.hats, who: save.active ? nameOf(save, save.active) : "" }),
+    wearHat,
+    goPlace: (id) => goPlace(id),
+    place: () => placeId,
+    zoom: () => save.zoom,
+    setZoom: (z) => {
+      save.zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
+      persist();
+      fit();
+    },
+    sound: () => save.sound,
+    covered: (on) => {
+      crew.paused = on || screen !== "closet";
+      if (on) fingersUp();
+    },
     rename: (id, name) => {
       const o = save.owned[id];
       if (!o) return;
@@ -284,6 +451,7 @@ const ui = new Ui(
       if (clean && clean !== defById(id)?.name) o.name = clean;
       else delete o.name;
       persist();
+      if (screen === "closet") refreshShelf();
     },
     skipTutorial: () => {
       if (save.tutorial !== "done") finishTutorial();
@@ -302,7 +470,7 @@ function fit(): void {
   const w = window.innerWidth;
   const h = window.innerHeight;
   renderer.setSize(w, h, false);
-  fitCamera(camera, w, h);
+  fitCamera(camera, w, h, save.zoom);
   worldPerPx = flyBounds(camera, h, bounds);
   island.fit(w, h);
 }
@@ -425,8 +593,25 @@ canvas.addEventListener("pointerdown", (e) => {
     return;
   }
   if (!playing()) return;
+  // A tap on the hat pops it; a tap on a friend is for that friend.
+  ndc.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  if (squishy.isHome && squishy.hatHit(ray)) {
+    squishy.popHat();
+    return;
+  }
+  if (!hitSquishy(e.clientX, e.clientY)) {
+    ray.setFromCamera(ndc, camera);
+    const f = crew.hit(ray);
+    if (f) {
+      const h = ray.intersectObject(f.sq.mesh, false)[0];
+      crew.tap(f, h?.point ?? f.sq.topPoint());
+      return;
+    }
+  }
   canvas.setPointerCapture(e.pointerId);
   const onBody = squishy.isHome && nearSquishy(e.clientX, e.clientY) !== null;
+  if (onBody) squishy.yawTarget = 0;
   if (onBody) {
     const dir = fingerDir(e.clientX, e.clientY);
     if (dir) {
@@ -542,6 +727,11 @@ function frame(): void {
   gestures.update(t);
   stepReveal(dt, now);
   squishy.update(dt, now, bounds);
+  const place = placeScene(placeId);
+  place.update(dt, now);
+  if (screen === "closet") crew.update(dt, now, bounds);
+  const sway = place.sway(now);
+  swayCamera(camera, sway.roll, sway.bob);
   if (popScale < 1) {
     popScale = Math.min(1, popScale + dt * 2.4);
     const k = popScale;
@@ -574,6 +764,13 @@ function frame(): void {
   requestAnimationFrame(frame);
 }
 
+// Players from before hats came get the party hat too.
+if (save.tutorial === "done" && addHat(save, "party")) {
+  ui.newHat(true);
+  persist();
+}
+goPlace(save.place, true);
+syncTeam();
 setScreen("title");
 requestAnimationFrame(frame);
 

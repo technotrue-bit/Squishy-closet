@@ -1,9 +1,11 @@
-// Little pictures of each squishy for the closet shelf and the Squishy Book,
-// drawn by a small second renderer a few at a time so the game never stutters.
+// Little pictures of each squishy (wearing its hat) and each hat, for the
+// shelf, the Squishy Book and the hats sheet, drawn by a small second renderer
+// a few at a time so the game never stutters.
 
 import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { defById } from "./catalog";
+import { buildHat } from "./hatModels";
 import { Squishy } from "./squishy";
 
 const SIZE = 192;
@@ -52,7 +54,16 @@ export class Thumbs {
   }
 
   /** Asks for a picture; `then` runs when it is ready (at once if it already is). */
-  want(id: string, then: (url: string) => void): void {
+  want(id: string, then: (url: string) => void, hat: string | null = null): void {
+    this.ask(hat ? `${id}+${hat}` : id, then);
+  }
+
+  /** A picture of a hat on its own. */
+  wantHat(id: string, then: (url: string) => void): void {
+    this.ask(`hat:${id}`, then);
+  }
+
+  private ask(id: string, then: (url: string) => void): void {
     const url = this.done.get(id);
     if (url) {
       then(url);
@@ -77,18 +88,50 @@ export class Thumbs {
     }
   }
 
-  private draw(id: string): string {
+  private draw(key: string): string {
+    if (!this.setup()) return "";
+    if (key.startsWith("hat:")) return this.drawHat(key.slice(4));
+    const [id, hat] = key.split("+");
     const def = defById(id);
-    if (!def || !this.setup()) return "";
+    if (!def) return "";
     if (!this.squishy) {
       this.squishy = new Squishy(def, { fx() {}, love() {}, did() {} });
       this.squishy.home.set(0, 0.45, 0);
+      this.squishy.autoSleep = false;
       this.scene.add(this.squishy.group);
-    } else this.squishy.setDesign(def);
+    }
+    this.squishy.group.visible = true;
+    this.squishy.setDesign(def, hat ?? null);
     // Settle into its resting shape, facing a little to the side.
-    this.squishy.update(1 / 60, 0, { minX: -3, maxX: 3, maxY: 6, floorY: 0 });
-    this.squishy.group.rotation.y = -0.25;
+    this.squishy.faceNow(-0.25);
+    this.squishy.update(1 / 60, 0.4, { minX: -3, maxX: 3, maxY: 6, floorY: 0 });
+    // A hat makes it taller: step back a little.
+    this.camera.position.set(0, hat ? 1.75 : 1.55, hat ? 5.3 : 4.6);
+    this.camera.lookAt(0, hat ? 0.78 : 0.62, 0);
     this.renderer!.render(this.scene, this.camera);
+    return this.renderer!.domElement.toDataURL("image/png");
+  }
+
+  private drawHat(id: string): string {
+    const model = buildHat(id);
+    if (!model) return "";
+    if (this.squishy) this.squishy.group.visible = false;
+    model.animate?.(0.4, { energy: 0, sleeping: false, dt: 1 / 60 });
+    model.obj.rotation.y += -0.35;
+    this.scene.add(model.obj);
+    const box = new THREE.Box3().setFromObject(model.obj);
+    const size = box.getSize(new THREE.Vector3());
+    const mid = box.getCenter(new THREE.Vector3());
+    const r = Math.max(size.x, size.y * 1.15, size.z) * 0.62 + 0.05;
+    const d = r / Math.tan(THREE.MathUtils.degToRad(15));
+    this.camera.position.set(mid.x, mid.y + d * 0.32, mid.z + d * 0.95);
+    this.camera.lookAt(mid);
+    this.renderer!.render(this.scene, this.camera);
+    this.scene.remove(model.obj);
+    model.obj.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (m.isMesh) m.geometry.dispose();
+    });
     return this.renderer!.domElement.toDataURL("image/png");
   }
 }

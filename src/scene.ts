@@ -1,14 +1,16 @@
-// The cozy table: a pastel sky, a soft tabletop, a bamboo steamer basket for
-// the squishy to sit in (with its lid leaning behind, like the toy) and soft lights.
+// The front of every place: a bamboo steamer basket for your squishy to sit in
+// (with its lid leaning behind, like the toy), soft shadows and soft lights.
+// The place behind it (tea table, beach, boat, living room) is swapped in.
 
 import * as THREE from "three";
+import type { PlaceScene } from "./placeScenes";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 
 export const BASKET_FLOOR = 0.15;
 /** Inside radius and rim height of the basket, for the squishy to bulge against. */
 export const BASKET_WALL = { r: 1.1, top: 0.3 };
 
-function canvasTex(w: number, h: number, draw: (c: CanvasRenderingContext2D) => void): THREE.CanvasTexture {
+export function canvasTex(w: number, h: number, draw: (c: CanvasRenderingContext2D) => void): THREE.CanvasTexture {
   const cv = document.createElement("canvas");
   cv.width = w;
   cv.height = h;
@@ -59,7 +61,7 @@ function bambooWeave(): THREE.CanvasTexture {
   });
 }
 
-function shadowTex(): THREE.CanvasTexture {
+export function shadowTex(): THREE.CanvasTexture {
   return canvasTex(128, 128, (c) => {
     const g = c.createRadialGradient(64, 64, 0, 64, 64, 64);
     g.addColorStop(0, "rgba(120,60,90,0.42)");
@@ -70,17 +72,6 @@ function shadowTex(): THREE.CanvasTexture {
   });
 }
 
-function skyTex(): THREE.CanvasTexture {
-  return canvasTex(16, 512, (c) => {
-    const g = c.createLinearGradient(0, 0, 0, 512);
-    g.addColorStop(0, "#c9b8ff");
-    g.addColorStop(0.45, "#ffc6df");
-    g.addColorStop(1, "#ffe0d0");
-    c.fillStyle = g;
-    c.fillRect(0, 0, 16, 512);
-  });
-}
-
 export interface Stage {
   scene: THREE.Scene;
   basket: THREE.Group;
@@ -88,6 +79,9 @@ export interface Stage {
   shadow: THREE.Mesh;
   /** The steamer lid; it rests leaning behind and closes over a new squishy. */
   lid: THREE.Group;
+  shadowMat: THREE.MeshBasicMaterial;
+  /** Shows a place behind the basket. */
+  setPlace(p: PlaceScene): void;
 }
 
 /** Where the lid leans at rest, and where it sits when closed on the basket. */
@@ -96,43 +90,20 @@ export const LID_CLOSED = { pos: new THREE.Vector3(0, 0.4, 0), rot: new THREE.Eu
 
 export function buildStage(renderer?: THREE.WebGLRenderer): Stage {
   const scene = new THREE.Scene();
-  scene.background = skyTex();
-  scene.fog = new THREE.Fog("#ffd7e2", 14, 30);
   if (renderer) {
     const pmrem = new THREE.PMREMGenerator(renderer);
     scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     scene.environmentIntensity = 0.55;
   }
 
-  scene.add(new THREE.HemisphereLight("#fff4fb", "#ffcfb8", 1.15));
+  const fill = new THREE.HemisphereLight("#fff4fb", "#ffcfb8", 1.15);
+  scene.add(fill);
   const key = new THREE.DirectionalLight("#ffffff", 2.1);
   key.position.set(-3, 6, 4.5);
   scene.add(key);
   const rim = new THREE.DirectionalLight("#ffd2f2", 1.1);
   rim.position.set(3.5, 2.5, -4);
   scene.add(rim);
-
-  const table = new THREE.Mesh(
-    new THREE.CircleGeometry(16, 64),
-    new THREE.MeshStandardMaterial({ color: "#ffe6ee", roughness: 0.92 }),
-  );
-  table.rotation.x = -Math.PI / 2;
-  scene.add(table);
-
-  // Little sprinkles on the table for fun.
-  const dots = new THREE.Group();
-  const dotGeo = new THREE.CircleGeometry(0.06, 16);
-  const dotColors = ["#ffffff", "#ffd1e6", "#d8ccff", "#ffe9a8"];
-  for (let i = 0; i < 70; i++) {
-    const a = Math.random() * Math.PI * 2;
-    const r = 1.8 + Math.random() * 7;
-    const m = new THREE.Mesh(dotGeo, new THREE.MeshBasicMaterial({ color: dotColors[i % dotColors.length] }));
-    m.rotation.x = -Math.PI / 2;
-    m.position.set(Math.cos(a) * r, 0.003, Math.sin(a) * r - 1);
-    m.scale.setScalar(0.6 + Math.random() * 0.9);
-    dots.add(m);
-  }
-  scene.add(dots);
 
   const basket = new THREE.Group();
   const side = bambooSide();
@@ -180,5 +151,15 @@ export function buildStage(renderer?: THREE.WebGLRenderer): Stage {
   scene.add(shadow);
 
   scene.add(basket);
-  return { scene, basket, shadow, lid };
+  let place: PlaceScene | null = null;
+  const setPlace = (p: PlaceScene) => {
+    if (place) scene.remove(place.group);
+    place = p;
+    scene.add(p.group);
+    scene.background = p.sky;
+    scene.fog = p.fog;
+    fill.color.set(p.light[0]);
+    fill.groundColor.set(p.light[1]);
+  };
+  return { scene, basket, shadow, lid, shadowMat, setPlace };
 }
