@@ -139,6 +139,7 @@ export class Crew {
       did: () => {},
     });
     sq.autoSleep = false;
+    sq.cheapSquash = 0.45;
     sq.group.scale.setScalar(FRIEND_SCALE);
     this.scene.add(sq.group);
     const shadow = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 2.2), this.shadowMat.clone());

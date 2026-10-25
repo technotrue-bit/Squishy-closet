@@ -66,7 +66,7 @@ const CSS = `
 .ui .nav .badge { position: absolute; top: -6px; right: -6px; min-width: 24px; height: 24px; padding: 0 6px; box-sizing: border-box; border-radius: 12px; background: #ffd84d; color: #7a4a00; font-size: 15px; font-weight: 900; display: grid; place-items: center; box-shadow: 0 2px 0 #d4a000; }
 @keyframes wiggle { 0%,100% { transform: rotate(0); } 15% { transform: rotate(-9deg) scale(1.06); } 30% { transform: rotate(8deg) scale(1.06); } 45% { transform: rotate(0); } }
 
-.ui .hint { position: absolute; left: 50%; top: calc(env(safe-area-inset-top) + 104px); transform: translateX(-50%); padding: 12px 22px; border-radius: 22px; background: rgba(255,255,255,0.9); box-shadow: 0 4px 0 rgba(200,110,150,0.3); font-weight: 900; font-size: 24px; text-align: center; white-space: nowrap; display: none; }
+.ui .hint { position: absolute; left: 50%; top: calc(env(safe-area-inset-top) + 104px); transform: translateX(-50%); padding: 12px 22px; border-radius: 22px; background: rgba(255,255,255,0.9); box-shadow: 0 4px 0 rgba(200,110,150,0.3); font-weight: 900; font-size: 21px; line-height: 1.15; text-align: center; width: max-content; max-width: 88vw; box-sizing: border-box; text-wrap: balance; display: none; }
 .ui .hint.on { display: block; animation: pop 0.35s cubic-bezier(.3,1.7,.5,1); }
 .ui .hint small { display: block; font-size: 15px; font-weight: 800; color: #a0607f; margin-top: 2px; }
 .ui .dots { display: flex; gap: 6px; justify-content: center; margin-top: 8px; }
@@ -159,7 +159,7 @@ const CSS = `
 .ui .picks { display: flex; justify-content: center; gap: 12px; margin: 10px 0 16px; }
 .ui .picks button { width: 92px; border-radius: 20px; background: #fff; box-shadow: 0 3px 0 #f3c6da; padding: 4px 4px 8px; font-weight: 900; font-size: 13px; }
 .ui .picks img { width: 84px; height: 84px; display: block; }
-.ui .toast { position: absolute; top: 36%; left: 50%; transform: translate(-50%, -50%) scale(0.6); opacity: 0; font-weight: 900; font-size: 32px; color: #fff; text-align: center; text-shadow: 0 3px 0 #e2508c, 0 6px 18px rgba(200,60,120,0.5); transition: opacity 0.25s, transform 0.35s cubic-bezier(.3,1.7,.5,1); white-space: nowrap; }
+.ui .toast { position: absolute; top: calc(env(safe-area-inset-top) + 28%); left: 50%; transform: translate(-50%, -50%) scale(0.7); opacity: 0; width: max-content; max-width: min(84vw, 340px); box-sizing: border-box; padding: 8px 16px; border-radius: 18px; background: rgba(255,255,255,0.88); box-shadow: 0 3px 0 rgba(200,110,150,0.3), 0 8px 20px rgba(160,60,110,0.15); font-weight: 900; font-size: 17px; line-height: 1.2; color: #e2508c; text-align: center; text-wrap: balance; transition: opacity 0.25s, transform 0.35s cubic-bezier(.3,1.7,.5,1); }
 .ui .toast.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 @media (max-height: 700px) { .ui .hint { font-size: 20px; padding: 8px 16px; } .ui .hint small { font-size: 13px; } .ui .skip { top: calc(env(safe-area-inset-top) + 186px); } }
 @media (max-width: 350px) { .ui .nav button { width: 56px; font-size: 11px; } .ui .nav .ico { width: 46px; height: 46px; } .ui .nav .open .ico { width: 56px; height: 56px; } }

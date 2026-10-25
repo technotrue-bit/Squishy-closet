@@ -1,7 +1,7 @@
 // The 3D places behind your squishy: the tea table, a sunny beach, a sailing
 // boat and a living room. Each has spots where friends do jobs (the prop at a
 // spot shows how far along the job is), spots to wander to, and its own sky.
-// The basket your squishy sits in stays in front in every place.
+// Your squishy sits in front; its own box sits at the back of every place.
 
 import * as THREE from "three";
 import { canvasTex } from "./scene";
@@ -26,6 +26,8 @@ export interface PlaceScene {
   spots: JobSpot[];
   /** Spots to wander to and rest at. */
   wander: THREE.Vector3[];
+  /** Where your squishy's own box sits, at the back. */
+  box: { at: THREE.Vector3; yaw: number };
   update(dt: number, t: number): void;
   /** The view rocks gently on the boat. */
   sway(t: number): { roll: number; bob: number };
@@ -232,7 +234,8 @@ function buildTable(): PlaceScene {
     fog: new THREE.Fog("#ffd7e2", 16, 34),
     light: ["#fff4fb", "#ffcfb8"],
     spots,
-    wander: [V(-1.4, -3.8), V(2.6, -4.8), V(-2.8, -5.2), V(0, -6.2), V(-0.6, -2.4)],
+    wander: [V(-1.4, -3.8), V(2.6, -4.8), V(-2.8, -5.2), V(0, -6.2), V(-0.7, -2.2)],
+    box: { at: V(1.1, -3.4), yaw: -0.25 },
     update: () => {},
     sway: () => ({ roll: 0, bob: 0 }),
   };
@@ -476,7 +479,8 @@ function buildBeach(): PlaceScene {
     fog: new THREE.Fog("#d8f0ff", 22, 60),
     light: ["#f4fbff", "#ffe2b0"],
     spots,
-    wander: [V(-0.8, -3.6), V(1.2, -4.0), V(-2.9, -4.8), V(-1.0, -5.6), V(2.0, -5.6)],
+    wander: [V(0.3, -3.0), V(1.2, -4.0), V(-2.9, -4.8), V(-1.0, -5.6), V(2.0, -5.6)],
+    box: { at: V(-1.2, -3.9), yaw: 0.25 },
     update: (dt, t) => {
       seaTex.offset.y = (t * 0.03) % 1;
       seaTex.offset.x = Math.sin(t * 0.3) * 0.02;
@@ -728,6 +732,7 @@ function buildBoat(): PlaceScene {
     light: ["#f2faff", "#d8f0ff"],
     spots,
     wander: [V(-0.6, -3.4), V(1.4, -4.4), V(-2.6, -6.8), V(2.0, -6.6), V(0.4, -9.0)],
+    box: { at: V(1.0, -3.2), yaw: -0.25 },
     update: (dt, t) => {
       // The sea slides past as we sail.
       seaTex.offset.x = (t * 0.05) % 1;
@@ -953,7 +958,8 @@ function buildRoom(): PlaceScene {
     fog: new THREE.Fog("#fde3ee", 20, 40),
     light: ["#fff6ee", "#e9c49a"],
     spots,
-    wander: [V(-0.4, -3.4), V(-1.6, -5.4), V(0.6, -5.6), V(-2.9, -4.6), V(2.0, -3.6)],
+    wander: [V(0.4, -3.0), V(-1.6, -5.4), V(0.6, -5.6), V(-2.9, -4.6), V(2.0, -3.6)],
+    box: { at: V(-1.1, -3.6), yaw: 0.25 },
     update: (_dt, t) => {
       cloud.position.x = -0.5 + Math.sin(t * 0.1) * 0.8;
     },

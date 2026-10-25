@@ -1,6 +1,7 @@
-// The front of every place: a bamboo steamer basket for your squishy to sit in
-// (with its lid leaning behind, like the toy), soft shadows and soft lights.
-// The place behind it (tea table, beach, boat, living room) is swapped in.
+// The stage every place shares: soft lights, soft shadows, and two bamboo
+// steamer baskets. The big one shows up in front only while a new box is
+// opened; the little one is your squishy's own box, sitting at the back of
+// whichever place you are in (with its lid leaning on it, like the toy).
 
 import * as THREE from "three";
 import type { PlaceScene } from "./placeScenes";
@@ -74,7 +75,14 @@ export function shadowTex(): THREE.CanvasTexture {
 
 export interface Stage {
   scene: THREE.Scene;
+  /** The box a new squishy pops out of, in front; hidden the rest of the time. */
   basket: THREE.Group;
+  /** Your squishy's own box at the back of the place. */
+  homeBox: THREE.Group;
+  /** Shows the opening basket (and its shadow) or hides it. */
+  showBasket(on: boolean): void;
+  /** Pushes the fog back to suit how far away the camera is. */
+  setViewDistance(d: number): void;
   /** Soft shadow that follows the squishy when it leaves the basket. */
   shadow: THREE.Mesh;
   /** The steamer lid; it rests leaning behind and closes over a new squishy. */
@@ -105,16 +113,84 @@ export function buildStage(renderer?: THREE.WebGLRenderer): Stage {
   rim.position.set(3.5, 2.5, -4);
   scene.add(rim);
 
-  const basket = new THREE.Group();
   const side = bambooSide();
   side.repeat.set(1, 1);
   const wallMat = new THREE.MeshStandardMaterial({ map: side, roughness: 0.75, side: THREE.DoubleSide });
+  const floorMat = new THREE.MeshStandardMaterial({ map: bambooWeave(), roughness: 0.85 });
+  const rimMat = new THREE.MeshStandardMaterial({ color: "#d39a5c", roughness: 0.6 });
+  const shadowMat = new THREE.MeshBasicMaterial({ map: shadowTex(), transparent: true, depthWrite: false });
+
+  const { basket, lid } = steamer(wallMat, floorMat, rimMat);
+  const basketShadow = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 3.4), shadowMat);
+  basketShadow.rotation.x = -Math.PI / 2;
+  basketShadow.position.y = 0.004;
+  scene.add(basketShadow);
+  const shadow = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 2.4), shadowMat.clone());
+  shadow.rotation.x = -Math.PI / 2;
+  shadow.position.y = 0.006;
+  scene.add(shadow);
+  scene.add(basket);
+
+  // Your squishy's own box: a smaller steamer with a pillow inside.
+  const home = steamer(wallMat, floorMat, rimMat);
+  const homeBox = home.basket;
+  const pillow = new THREE.Mesh(new THREE.SphereGeometry(0.62, 28, 16), new THREE.MeshStandardMaterial({ color: "#fff3f8", roughness: 0.95 }));
+  pillow.scale.set(1.15, 0.32, 0.8);
+  pillow.position.set(0.1, BASKET_FLOOR + 0.1, -0.25);
+  const blanket = new THREE.Mesh(new THREE.SphereGeometry(0.8, 28, 14, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshStandardMaterial({ color: "#ffc6df", roughness: 0.95 }));
+  blanket.scale.set(1.15, 0.22, 0.7);
+  blanket.position.set(-0.05, BASKET_FLOOR, 0.35);
+  homeBox.add(pillow, blanket);
+  homeBox.scale.setScalar(0.62);
+  const homeShadow = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 3.4), shadowMat);
+  homeShadow.rotation.x = -Math.PI / 2;
+  homeShadow.position.y = 0.006;
+  homeBox.add(homeShadow);
+  scene.add(homeBox);
+
+  const showBasket = (on: boolean) => {
+    basket.visible = on;
+    basketShadow.visible = on;
+  };
+  showBasket(false);
+
+  let place: PlaceScene | null = null;
+  let viewD = 8;
+  const fog = new THREE.Fog("#ffffff", 20, 40);
+  const fitFog = () => {
+    if (!place) return;
+    // Places set their fog for a camera about 8 away; push it back to match.
+    const extra = Math.max(0, viewD - 8);
+    fog.color.copy(place.fog.color);
+    fog.near = place.fog.near + extra;
+    fog.far = place.fog.far + extra * 1.4;
+  };
+  const setPlace = (p: PlaceScene) => {
+    if (place) scene.remove(place.group);
+    place = p;
+    scene.add(p.group);
+    scene.background = p.sky;
+    scene.fog = fog;
+    fitFog();
+    fill.color.set(p.light[0]);
+    fill.groundColor.set(p.light[1]);
+    homeBox.position.copy(p.box.at);
+    homeBox.rotation.y = p.box.yaw;
+  };
+  const setViewDistance = (d: number) => {
+    viewD = d;
+    fitFog();
+  };
+  return { scene, basket, homeBox, showBasket, setViewDistance, shadow, lid, shadowMat, setPlace };
+}
+
+/** A bamboo steamer basket with its lid leaning on its edge behind it. */
+function steamer(wallMat: THREE.Material, floorMat: THREE.Material, rimMat: THREE.Material): { basket: THREE.Group; lid: THREE.Group } {
+  const basket = new THREE.Group();
   const wall = new THREE.Mesh(new THREE.CylinderGeometry(1.17, 1.12, 0.3, 72, 1, true), wallMat);
   wall.position.y = 0.15;
-  const floorMat = new THREE.MeshStandardMaterial({ map: bambooWeave(), roughness: 0.85 });
   const floor = new THREE.Mesh(new THREE.CylinderGeometry(1.12, 1.12, BASKET_FLOOR, 72), floorMat);
   floor.position.y = BASKET_FLOOR / 2;
-  const rimMat = new THREE.MeshStandardMaterial({ color: "#d39a5c", roughness: 0.6 });
   const rimTop = new THREE.Mesh(new THREE.TorusGeometry(1.17, 0.045, 12, 96), rimMat);
   rimTop.rotation.x = Math.PI / 2;
   rimTop.position.y = 0.3;
@@ -123,7 +199,6 @@ export function buildStage(renderer?: THREE.WebGLRenderer): Stage {
   rimLow.position.y = 0.05;
   basket.add(wall, floor, rimTop, rimLow);
 
-  // The lid, leaning on its edge behind the basket.
   const lid = new THREE.Group();
   const lidWall = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 0.2, 72, 1, true), wallMat);
   const lidTop = new THREE.Mesh(new THREE.CylinderGeometry(1.18, 1.18, 0.05, 72), floorMat);
@@ -138,28 +213,5 @@ export function buildStage(renderer?: THREE.WebGLRenderer): Stage {
   lid.rotation.copy(LID_REST.rot);
   lid.position.copy(LID_REST.pos);
   basket.add(lid);
-
-  const shadowMat = new THREE.MeshBasicMaterial({ map: shadowTex(), transparent: true, depthWrite: false });
-  const basketShadow = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 3.4), shadowMat);
-  basketShadow.rotation.x = -Math.PI / 2;
-  basketShadow.position.y = 0.004;
-  scene.add(basketShadow);
-  const shadow = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 2.4), shadowMat.clone());
-  shadow.rotation.x = -Math.PI / 2;
-  shadow.position.y = 0.006;
-  shadow.visible = false;
-  scene.add(shadow);
-
-  scene.add(basket);
-  let place: PlaceScene | null = null;
-  const setPlace = (p: PlaceScene) => {
-    if (place) scene.remove(place.group);
-    place = p;
-    scene.add(p.group);
-    scene.background = p.sky;
-    scene.fog = p.fog;
-    fill.color.set(p.light[0]);
-    fill.groundColor.set(p.light[1]);
-  };
-  return { scene, basket, shadow, lid, shadowMat, setPlace };
+  return { basket, lid };
 }

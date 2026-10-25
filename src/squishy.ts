@@ -28,7 +28,7 @@ class Spring {
   }
 }
 
-export type Fx = "heart" | "sparkle" | "star" | "zz" | "note";
+export type Fx = "heart" | "sparkle" | "star" | "zz" | "note" | "glimmer";
 
 export interface Bounds {
   minX: number;
@@ -122,6 +122,14 @@ export class Squishy {
   private hatId: string | null = null;
   /** Falls asleep by itself after a while with nobody playing. */
   autoSleep = true;
+  /**
+   * How much plain squash may be shown by scaling the resting shape instead of
+   * reshaping every vertex. Friends far away can take a lot; the one you hold
+   * only a breath's worth, so its hat never looks stretched.
+   */
+  cheapSquash = 0.08;
+  /** The geometry holds the plain resting shape (no dents, waves or lean). */
+  private atRest = false;
   /** Which way it faces (radians about up); friends turn to look at things. */
   yawTarget = 0;
   private yaw = 0;
@@ -257,6 +265,7 @@ export class Squishy {
     this.feel = feelFor(def.soft);
     this.grid = buildGrid(SHAPES[def.body]);
     deform(this.grid, this.d, this.pos);
+    this.atRest = false;
     const row1 = faceRowTop(SHAPES[def.body]);
     if (row1 !== this.faceRow1) {
       this.faceRow1 = row1;
@@ -292,8 +301,8 @@ export class Squishy {
     const f = def.finish;
     if (f === "matte") Object.assign(base, { roughness: 0.68, clearcoat: 0.2, clearcoatRoughness: 0.5 });
     if (f === "shiny") Object.assign(base, { roughness: 0.4, clearcoat: 0.85, clearcoatRoughness: 0.14 });
-    if (f === "glitter") Object.assign(base, { roughness: 0.42, metalness: 0.5, clearcoat: 0.75, clearcoatRoughness: 0.2, sheen: 0.2 });
-    if (f === "gold") Object.assign(base, { roughness: 0.3, metalness: 0.85, clearcoat: 1, clearcoatRoughness: 0.12, sheen: 0 });
+    if (f === "glitter") Object.assign(base, { roughness: 0.45, metalness: 0.3, clearcoat: 0.6, clearcoatRoughness: 0.3, sheen: 0.35 });
+    if (f === "gold") Object.assign(base, { roughness: 0.38, metalness: 0.7, clearcoat: 0.7, clearcoatRoughness: 0.25, sheen: 0.2 });
     if (f === "glow") Object.assign(base, { roughness: 0.55, clearcoat: 0.4, emissive: new THREE.Color(def.glow ?? def.color), emissiveIntensity: 0.4 });
     this.glow = f === "glow";
     this.material?.dispose();
@@ -1136,7 +1145,35 @@ export class Squishy {
       // A fingertip-sized dent that widens a little as it sinks.
       this.d.dents.push({ x: f.dir.x, y: f.dir.y, z: f.dir.z, depth, radius: this.feel.radius + 0.35 * Math.max(0, depth) });
     }
-    deform(this.grid, this.d, this.pos);
+    // Most of the time nothing pokes it: then squash and melt are just a
+    // stretch about the bottom, so keep the resting shape and scale it.
+    const plain =
+      this.d.dents.length === 0 &&
+      this.d.waves.length === 0 &&
+      this.d.wallR === 0 &&
+      Math.abs(this.d.leanX) < 0.004 &&
+      Math.abs(this.d.leanZ) < 0.004 &&
+      Math.abs(this.d.squash) < this.cheapSquash &&
+      Math.abs(this.d.melt) < 0.02;
+    if (plain) {
+      const sy = 1 - Math.min(0.75, Math.max(-0.4, this.d.squash));
+      const sxz = (1 / Math.sqrt(sy)) * (1 + this.d.melt);
+      this.body.scale.set(sxz, sy, sxz);
+      if (this.atRest) {
+        if (this.glow) this.material.emissiveIntensity = 0.32 + 0.14 * Math.sin(this.now * 2.1);
+        for (const { pin } of this.pinned) pin.animate?.(pin.obj, this.now);
+        return;
+      }
+      const keep = { ...this.d };
+      Object.assign(this.d, { squash: 0, melt: 0, leanX: 0, leanZ: 0 });
+      deform(this.grid, this.d, this.pos);
+      Object.assign(this.d, keep);
+      this.atRest = true;
+    } else {
+      this.body.scale.set(1, 1, 1);
+      this.atRest = false;
+      deform(this.grid, this.d, this.pos);
+    }
     const posAttr = this.geo.getAttribute("position") as THREE.BufferAttribute;
     posAttr.needsUpdate = true;
     this.geo.computeVertexNormals();
@@ -1226,17 +1263,21 @@ function addGlitter(m: THREE.MeshPhysicalMaterial, time: { value: number }, spar
         "#include <emissivemap_fragment>",
         `#include <emissivemap_fragment>
         {
-          vec2 gp = vUv * vec2(300.0, 170.0);
+          // Soft, slow glimmers: small flecks that fade in and out gently,
+          // tinted toward the body color so they never glare.
+          vec2 gp = vUv * vec2(260.0, 150.0);
           vec2 cell = floor(gp);
           float h = fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5453);
           float h2 = fract(h * 91.7 + 0.13);
           vec2 f = fract(gp) - 0.5;
-          float fleck = smoothstep(0.45, 0.05, length(f));
-          vec3 facet = normalize(normal + vec3(h - 0.5, h2 - 0.5, 0.0) * 1.4);
-          float glint = pow(max(0.0, dot(facet, normalize(vec3(0.35, 0.55, 0.75)))), 28.0);
-          float tw = 0.55 + 0.45 * sin(uTime * 2.6 + h * 40.0);
-          diffuseColor.rgb *= 0.85 + 0.3 * h;
-          totalEmissiveRadiance += uSparkle * fleck * glint * tw * 2.2 * step(0.3, h2);
+          float fleck = smoothstep(0.42, 0.0, length(f));
+          vec3 facet = normalize(normal + vec3(h - 0.5, h2 - 0.5, 0.0) * 1.2);
+          float glint = pow(max(0.0, dot(facet, normalize(vec3(0.35, 0.55, 0.75)))), 14.0);
+          float tw = 0.5 + 0.5 * sin(uTime * 0.9 + h * 40.0);
+          tw *= tw;
+          diffuseColor.rgb *= 0.94 + 0.12 * h;
+          vec3 soft = mix(diffuseColor.rgb, uSparkle, 0.55);
+          totalEmissiveRadiance += soft * fleck * glint * tw * 0.55 * step(0.45, h2);
         }`,
       );
   };

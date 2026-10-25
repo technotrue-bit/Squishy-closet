@@ -26,9 +26,13 @@ import { Crew } from "./friends";
 
 const app = document.getElementById("app")!;
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.05;
+// Sharpness adapts to the phone: start crisp, step down if frames run slow.
+const MAX_DPR = Math.min(window.devicePixelRatio || 1, 2);
+let dpr = MAX_DPR;
+renderer.setPixelRatio(dpr);
+// Neutral tone mapping keeps the pastel colors true instead of graying them.
+renderer.toneMapping = THREE.NeutralToneMapping;
+renderer.toneMappingExposure = 1.0;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 app.appendChild(renderer.domElement);
 
@@ -145,9 +149,10 @@ const squishy = new Squishy(startDef, {
     tutorialDid(a);
   },
 });
-squishy.home.set(0, BASKET_FLOOR - BOTTOM_Y, 0);
+/** Where the one you hold sits: on the floor in front. Its box is at the back. */
+const FLOOR_HOME = new THREE.Vector3(0, -BOTTOM_Y, 0);
+squishy.home.copy(FLOOR_HOME);
 squishy.group.position.copy(squishy.home);
-Object.assign(squishy.basket, BASKET_WALL);
 squishy.setHat(hatOf(save.active));
 stage.scene.add(squishy.group);
 
@@ -310,6 +315,8 @@ interface Reveal {
 }
 let reveal: Reveal | null = null;
 let popScale = 1;
+/** Seconds into tucking the opening basket away, or -1 when not. */
+let basketAway = -1;
 
 function startBox(first: boolean): void {
   const owned = new Set(Object.keys(save.owned));
@@ -317,6 +324,12 @@ function startBox(first: boolean): void {
   reveal = { def, first, taps: 0, phase: "closing", t: 0, shake: 0 };
   fingersUp();
   setScreen("box");
+  // The opening basket comes out in front; the new one pops up inside it.
+  basketAway = -1;
+  stage.basket.scale.setScalar(1);
+  stage.showBasket(true);
+  squishy.placeAt(new THREE.Vector3(0, BASKET_FLOOR - BOTTOM_Y, 0));
+  Object.assign(squishy.basket, BASKET_WALL);
   squishy.group.visible = false;
   ui.hint(first ? "Your first squishy!" : "A new squishy!", "Tap the box 3 times");
   sfx.whoosh();
@@ -354,9 +367,15 @@ function popOut(): void {
   popScale = 0.15;
   squishy.popIn();
   const at = squishy.topPoint();
-  fx.emit("sparkle", at, 16);
+  if (def.finish === "matte") {
+    fx.emit("sparkle", at, 12);
+    fx.emit("star", at, 4);
+  } else {
+    // Special finishes get a soft, slow shimmer instead of a burst.
+    fx.emit("glimmer", at, 18);
+    fx.emit("sparkle", at, 5);
+  }
   fx.emit("heart", at, 6);
-  fx.emit("star", at, 4);
   sfx.pop();
   sfx.chime(true);
   setTimeout(async () => {
@@ -370,6 +389,10 @@ function popOut(): void {
     pointAtOpen = false;
     syncTeam();
     setScreen("closet");
+    // Out of the basket and onto the floor; the basket tucks itself away.
+    squishy.basket.r = 0;
+    squishy.placeAt(FLOOR_HOME);
+    basketAway = 0;
     squishy.hello();
     if (hat) showNewHat(hat);
   }, 1100);
@@ -471,6 +494,8 @@ function fit(): void {
   const h = window.innerHeight;
   renderer.setSize(w, h, false);
   fitCamera(camera, w, h, save.zoom);
+  const base = camera.userData.base as { pos: THREE.Vector3; target: THREE.Vector3 };
+  stage.setViewDistance(base.pos.distanceTo(base.target));
   worldPerPx = flyBounds(camera, h, bounds);
   island.fit(w, h);
 }
@@ -710,10 +735,35 @@ function stepHints(): void {
   } else ui.hand(null);
 }
 
+/** Watches how long frames take and trades a little sharpness for smoothness. */
+const pace = { sum: 0, n: 0, calm: 0 };
+function stepPace(ms: number): void {
+  if (ms > 250) return; // a pause, not a slow frame
+  pace.sum += ms;
+  pace.n++;
+  if (pace.n < 90) return;
+  const avg = pace.sum / pace.n;
+  pace.sum = 0;
+  pace.n = 0;
+  let next = dpr;
+  if (avg > 21 && dpr > 1) next = Math.max(1, +(dpr - 0.25).toFixed(2));
+  else if (avg < 15 && dpr < MAX_DPR && ++pace.calm >= 4) {
+    next = Math.min(MAX_DPR, +(dpr + 0.25).toFixed(2));
+    pace.calm = 0;
+  }
+  if (next !== dpr) {
+    dpr = next;
+    renderer.setPixelRatio(dpr);
+    fit();
+  }
+}
+
+let glimmerAt = 0;
 let last = performance.now();
 let hugHearts = 0;
 function frame(): void {
   const t = performance.now();
+  stepPace(t - last);
   const dt = Math.min(1 / 20, (t - last) / 1000);
   last = t;
   const now = t / 1000;
@@ -748,10 +798,25 @@ function frame(): void {
     }
   }
   stepHints();
+  // Glitter and gold squishies give off the odd soft glimmer.
+  if (screen === "closet" && squishy.group.visible && (squishy.def.finish === "glitter" || squishy.def.finish === "gold") && now > glimmerAt) {
+    glimmerAt = now + 1.2 + Math.random() * 1.6;
+    fx.emit("glimmer", squishy.topPoint(), 1);
+  }
   fx.update(dt);
-  // Shadow under the bun when it is out of the basket.
+  if (basketAway >= 0) {
+    basketAway += dt;
+    const k = Math.min(1, basketAway / 0.35);
+    stage.basket.scale.setScalar(Math.max(0.001, 1 - ease(k)));
+    if (k >= 1) {
+      basketAway = -1;
+      stage.showBasket(false);
+      stage.basket.scale.setScalar(1);
+    }
+  }
+  // Soft shadow under the bun, except while it sits in the opening basket.
   const p = squishy.group.position;
-  const out = Math.hypot(p.x, p.z) > 0.3;
+  const out = !stage.basket.visible || Math.hypot(p.x, p.z) > 0.3;
   stage.shadow.visible = out && squishy.group.visible;
   if (out) {
     stage.shadow.position.set(p.x, 0.006, p.z);

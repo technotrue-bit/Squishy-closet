@@ -25,8 +25,8 @@ export class Thumbs {
       const r = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
       r.setPixelRatio(1);
       r.setSize(SIZE, SIZE, false);
-      r.toneMapping = THREE.ACESFilmicToneMapping;
-      r.toneMappingExposure = 1.05;
+      r.toneMapping = THREE.NeutralToneMapping;
+      r.toneMappingExposure = 1.0;
       r.outputColorSpace = THREE.SRGBColorSpace;
       r.setClearColor(0x000000, 0);
       this.renderer = r;

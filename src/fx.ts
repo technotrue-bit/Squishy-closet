@@ -47,13 +47,28 @@ const textures: Record<Fx, () => THREE.CanvasTexture> = {
     }),
   sparkle: () =>
     makeTexture((c) => {
-      const g = c.createRadialGradient(64, 64, 0, 64, 64, 60);
-      g.addColorStop(0, "rgba(255,255,255,1)");
-      g.addColorStop(0.25, "rgba(255,240,180,0.9)");
-      g.addColorStop(1, "rgba(255,220,120,0)");
+      // A soft glow with a gentle four-point twinkle: cozy, not dazzling.
+      const halo = c.createRadialGradient(64, 64, 0, 64, 64, 46);
+      halo.addColorStop(0, "rgba(255,236,246,0.75)");
+      halo.addColorStop(1, "rgba(255,214,236,0)");
+      c.fillStyle = halo;
+      c.fillRect(0, 0, 128, 128);
+      const g = c.createRadialGradient(64, 64, 0, 64, 64, 52);
+      g.addColorStop(0, "rgba(255,250,240,0.9)");
+      g.addColorStop(0.35, "rgba(255,225,200,0.6)");
+      g.addColorStop(1, "rgba(255,200,225,0)");
       c.fillStyle = g;
-      starPath(c, 64, 64, 60, 0.18, 4);
+      starPath(c, 64, 64, 52, 0.26, 4);
       c.fill();
+    }),
+  glimmer: () =>
+    makeTexture((c) => {
+      const g = c.createRadialGradient(64, 64, 0, 64, 64, 60);
+      g.addColorStop(0, "rgba(255,255,255,0.85)");
+      g.addColorStop(0.3, "rgba(255,226,240,0.45)");
+      g.addColorStop(1, "rgba(220,200,255,0)");
+      c.fillStyle = g;
+      c.fillRect(0, 0, 128, 128);
     }),
   star: () =>
     makeTexture((c) => {
@@ -128,9 +143,13 @@ export class Effects {
           ? new THREE.Vector3(Math.cos((i / count) * Math.PI * 2) * 0.9, 0.6, Math.sin((i / count) * Math.PI * 2) * 0.4)
           : kind === "zz"
             ? new THREE.Vector3(0.35, 0.55, 0)
-            : new THREE.Vector3((Math.random() - 0.5) * 1.2, 1.2 + Math.random() * 0.8, 0.2);
-      const size = kind === "sparkle" ? 0.35 + Math.random() * 0.25 : kind === "zz" ? 0.36 : 0.32 + Math.random() * 0.12;
-      this.live.push({ sprite, vel, age: 0, life: kind === "zz" ? 2.2 : kind === "star" ? 1.5 : 1.3, size, kind, spin: (Math.random() - 0.5) * 3 });
+            : kind === "glimmer"
+              ? new THREE.Vector3((Math.random() - 0.5) * 0.5, 0.25 + Math.random() * 0.35, 0.1)
+              : new THREE.Vector3((Math.random() - 0.5) * 1.2, 1.2 + Math.random() * 0.8, 0.2);
+      if (kind === "glimmer") sprite.position.add(new THREE.Vector3((Math.random() - 0.5) * 1.2, (Math.random() - 0.3) * 0.9, 0.2));
+      const size = kind === "sparkle" ? 0.26 + Math.random() * 0.16 : kind === "glimmer" ? 0.12 + Math.random() * 0.12 : kind === "zz" ? 0.36 : 0.32 + Math.random() * 0.12;
+      const life = kind === "zz" ? 2.2 : kind === "star" ? 1.5 : kind === "glimmer" ? 2.4 + Math.random() * 1.4 : 1.3;
+      this.live.push({ sprite, vel, age: 0, life, size, kind, spin: kind === "glimmer" ? 0 : (Math.random() - 0.5) * 3 });
       this.group.add(sprite);
     }
   }
@@ -143,12 +162,15 @@ export class Effects {
       if (p.kind === "star") {
         p.vel.multiplyScalar(Math.pow(0.2, dt));
         p.vel.y -= dt * 0.4;
-      } else p.vel.multiplyScalar(Math.pow(0.5, dt));
+      } else if (p.kind !== "glimmer") p.vel.multiplyScalar(Math.pow(0.5, dt));
       if (p.kind === "heart" || p.kind === "note") p.sprite.position.x += Math.sin(p.age * 7) * dt * 0.3;
       const pop = Math.min(1, p.age * 8);
       const s = p.size * (0.4 + 0.6 * pop) * (p.kind === "zz" ? 0.6 + t * 0.8 : 1);
       p.sprite.scale.set(s, s, s);
-      (p.sprite.material as THREE.SpriteMaterial).opacity = t > 0.65 ? Math.max(0, 1 - (t - 0.65) / 0.35) : 1;
+      // Glimmers drift and breathe in and out instead of popping.
+      (p.sprite.material as THREE.SpriteMaterial).opacity =
+        p.kind === "glimmer" ? Math.sin(Math.PI * t) * (0.6 + 0.4 * Math.sin(p.age * 3 + p.size * 50)) : t > 0.65 ? Math.max(0, 1 - (t - 0.65) / 0.35) : 1;
+      if (p.kind === "glimmer") p.sprite.position.x += Math.sin(p.age * 1.7 + p.size * 30) * dt * 0.12;
       (p.sprite.material as THREE.SpriteMaterial).rotation += p.spin * dt;
     }
     const dead = this.live.filter((p) => p.age >= p.life);
