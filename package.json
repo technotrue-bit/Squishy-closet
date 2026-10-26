@@ -12,6 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "qrcode-generator": "2.0.4",
     "three": "^0.182.0"
   },
   "devDependencies": {

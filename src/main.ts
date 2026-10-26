@@ -30,6 +30,7 @@ import {
   nameOf,
   sendIn,
   storeSave,
+  type Save,
   TEAM_MAX,
   ZOOM_MAX,
   ZOOM_MIN,
@@ -44,6 +45,7 @@ import { Crew } from "./friends";
 import { Visitors } from "./visitors";
 import { Nursery } from "./nursery";
 import { moodById, randomMood, type MoodId } from "./personality";
+import { combineSaves, decodeSave, encodeSave, findCode, HASH, keepStorage, moveLink } from "./move";
 import { BABIES_MAX, growLeft, growWords, isNapping, moodOf, newBaby, pickBabyKind, play as playBaby, points, teach, SHY_BELOW } from "./babies";
 
 const app = document.getElementById("app")!;
@@ -68,7 +70,15 @@ const thumbs = new Thumbs();
 const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 60);
 
 let screen: Screen = "title";
-const persist = () => storeSave(save);
+let keepAsked = false;
+const persist = () => {
+  storeSave(save);
+  // Once there is something to lose, ask the browser to keep it.
+  if (!keepAsked && Object.keys(save.owned).length) {
+    keepAsked = true;
+    keepStorage();
+  }
+};
 const ownedIds = () => Object.keys(save.owned).sort((a, b) => save.owned[b].got - save.owned[a].got);
 const hatOf = (id: string | null) => (id && save.owned[id]?.hat) || null;
 const moodIdOf = (id: string | null): MoodId => (id && save.owned[id]?.mood) || "bouncy";
@@ -664,6 +674,14 @@ const ui = new Ui(
     skipTutorial: () => {
       if (save.tutorial !== "done") finishTutorial();
     },
+    moveLink: async () => moveLink(await encodeSave(save), location, document.referrer, window.parent !== window),
+    bringIn: async (text) => {
+      const code = findCode(text);
+      const other = code && (await decodeSave(code));
+      if (!other) return null;
+      bringIn(other);
+      return 0;
+    },
   },
   thumbs,
   save.sound,
@@ -1057,6 +1075,31 @@ syncTeam();
 syncBabies();
 setScreen("title");
 requestAnimationFrame(frame);
+
+// ---- squishies from another phone ---------------------------------------
+
+/** Adds the other phone's collection to this one, then starts again so every screen shows it. */
+function bringIn(other: Save): void {
+  const { save: both, added } = combineSaves(save, other);
+  storeSave(both);
+  keepStorage();
+  ui.toast(added ? `${added} new ${added === 1 ? "squishy" : "squishies"}!` : "All here!", 1400);
+  window.setTimeout(() => location.replace(location.pathname + location.search), 900);
+}
+
+// A move link opened on this phone: the code is in the #fragment, which never reaches a server.
+if (location.hash.startsWith(HASH)) {
+  const code = findCode(location.hash);
+  history.replaceState(null, "", location.pathname + location.search);
+  void (async () => {
+    const other = code && (await decodeSave(code));
+    if (!other) {
+      ui.toast("That move link didn't work. Make a new one.", 2400);
+      return;
+    }
+    if (await ui.confirmMove(combineSaves(save, other).added)) bringIn(other);
+  })();
+}
 
 document.addEventListener("visibilitychange", () => {
   last = performance.now();
