@@ -11,6 +11,7 @@ import { PLACES, type PlaceId } from "./places";
 import { LOVE_PER_BOX, NAME_MAX, ZOOM_MAX, ZOOM_MIN } from "./save";
 import { LESSONS, moodById, type Mood, type MoodId } from "./personality";
 import type { Thumbs } from "./thumbs";
+import qrcode from "qrcode-generator";
 
 const CSS = `
 .ui { position: fixed; inset: 0; pointer-events: none; font-family: ui-rounded, "SF Pro Rounded", "Arial Rounded MT Bold", "Nunito", system-ui, sans-serif; color: #5a2a4a; -webkit-user-select: none; user-select: none; }
@@ -179,6 +180,14 @@ const CSS = `
 .ui .row .sm { width: 26px; text-align: center; font-size: 26px; color: #c58ab0; }
 .ui .toggle { padding: 10px 22px; border-radius: 999px; font-weight: 900; font-size: 18px; background: #ffe0ec; color: #e2508c !important; }
 .ui .toggle.off { background: #eee6ef; color: #9a8aa3 !important; }
+.ui .row.grown .lbl { width: auto; font-size: 16px; color: #a0607f; }
+.ui .row.grown .toggle { font-size: 16px; padding: 10px 16px; }
+.ui .move .qr { width: min(78vw, 340px); margin: 6px auto 10px; background: #fff; border-radius: 16px; padding: 6px; box-shadow: 0 3px 0 #f3c6da; }
+.ui .move .qr svg { display: block; width: 100%; height: auto; }
+.ui .move .btns { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+.ui .move .btns .big { font-size: 18px; padding: 12px 20px; }
+.ui .move textarea { display: block; width: 100%; height: 64px; box-sizing: border-box; border-radius: 14px; border: 3px dashed #f3c6da; padding: 8px; font: inherit; font-size: 14px; color: #5a2a4a; pointer-events: auto; -webkit-user-select: text; user-select: text; resize: none; margin-bottom: 10px; }
+.ui .move hr { border: 0; border-top: 2px dashed #f3c6da; margin: 16px 0 12px; }
 .ui .picks { display: flex; justify-content: center; gap: 12px; margin: 10px 0 16px; }
 .ui .picks button { width: 92px; border-radius: 20px; background: #fff; box-shadow: 0 3px 0 #f3c6da; padding: 4px 4px 8px; font-weight: 900; font-size: 13px; }
 .ui .picks img { width: 84px; height: 84px; display: block; }
@@ -244,6 +253,10 @@ export interface UiHandlers {
   babyTap(key: string): void;
   teach(key: string, mood: MoodId): void;
   renameBaby(key: string, name: string): void;
+  /** A link that carries the whole collection to another phone. */
+  moveLink(): Promise<string>;
+  /** Squishies from another phone's link or code: how many were new, or null when it isn't a good code. */
+  bringIn(text: string): Promise<number | null>;
 }
 
 export interface BabyInfo {
@@ -540,8 +553,10 @@ export class Ui {
     const panel = this.openSheet(
       `<h1>Settings</h1>
        <div class="row"><span class="lbl">Sound</span><button class="toggle${on ? "" : " off"}">${on ? "On" : "Off"}</button></div>
-       <div class="row"><span class="lbl">Zoom</span><span class="sm">−</span><input type="range" min="${ZOOM_MIN}" max="${ZOOM_MAX}" step="0.01" value="${z}" aria-label="Zoom"><span class="sm">+</span></div>`,
+       <div class="row"><span class="lbl">Zoom</span><span class="sm">−</span><input type="range" min="${ZOOM_MIN}" max="${ZOOM_MAX}" step="0.01" value="${z}" aria-label="Zoom"><span class="sm">+</span></div>
+       <div class="row grown"><span class="lbl">Grown-ups</span><button class="toggle move-btn">Move to a new phone</button></div>`,
     );
+    panel.querySelector(".move-btn")!.addEventListener("click", () => void this.moveSheet());
     const t = panel.querySelector(".toggle") as HTMLButtonElement;
     t.addEventListener("click", () => {
       const now = this.h.toggleSound();
@@ -550,6 +565,76 @@ export class Ui {
     });
     const r = panel.querySelector("input") as HTMLInputElement;
     r.addEventListener("input", () => this.h.setZoom(Number(r.value)));
+  }
+
+  /**
+   * For a grown-up: a QR code and link that carry the collection to another phone, and a box to bring one in.
+   * The code goes from screen to screen; nothing is kept online.
+   */
+  async moveSheet(): Promise<void> {
+    const panel = this.openSheet(`<div class="move"><h1>Move to a new phone</h1><div class="sub">Making your code…</div></div>`);
+    const box = panel.querySelector(".move") as HTMLElement;
+    let link = "";
+    try {
+      link = await this.h.moveLink();
+    } catch {
+      // Shown below as a code that couldn't be made.
+    }
+    if (!box.isConnected) return;
+    let qr = "";
+    try {
+      const q = qrcode(0, "L");
+      q.addData(link);
+      q.make();
+      qr = q.createSvgTag({ cellSize: 4, margin: 4, scalable: true });
+    } catch {
+      qr = "";
+    }
+    box.innerHTML = `<h1>Move to a new phone</h1>
+      <div class="sub">For grown-ups. On the new phone, point the camera at this code and open the link. Or share or copy the link.</div>
+      ${link && qr ? `<div class="qr" role="img" aria-label="QR code for the move link">${qr}</div>` : `<div class="sub">This browser can't make a code. Try another browser.</div>`}
+      <div class="btns">${link && "share" in navigator ? `<button class="big alt share">Share link</button>` : ""}${link ? `<button class="big copy">Copy link</button>` : ""}</div>
+      <div class="tip">The code holds the whole collection and goes straight to the other phone. Nothing is kept online. Squishies stay here too.</div>
+      <hr>
+      <div class="sub">Got a link from another phone? Paste it here.</div>
+      <textarea aria-label="Link from another phone" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
+      <div class="btns"><button class="big in">Bring them in</button></div>`;
+    box.querySelector(".share")?.addEventListener("click", () => {
+      void navigator.share({ title: "Aurora's World squishies", url: link }).catch(() => {});
+    });
+    const copy = box.querySelector<HTMLButtonElement>(".copy");
+    copy?.addEventListener("click", () => {
+      void navigator.clipboard
+        ?.writeText(link)
+        .then(() => (copy.textContent = "Copied!"))
+        .catch(() => this.toast("Couldn't copy. Use Share instead.", 1800));
+    });
+    const input = box.querySelector("textarea") as HTMLTextAreaElement;
+    box.querySelector(".in")!.addEventListener("click", async () => {
+      const added = await this.h.bringIn(input.value);
+      if (added === null) this.toast("That link didn't work. Copy it again.", 2000);
+    });
+  }
+
+  /** Squishies arrived from another phone. Resolves true to bring them in. */
+  confirmMove(added: number): Promise<boolean> {
+    return new Promise((resolve) => {
+      const panel = this.openSheet(
+        `<h1>Squishies from another phone!</h1>
+         <div class="sub">${added > 0 ? `Bring in ${added} new ${added === 1 ? "squishy" : "squishies"}?` : "Bring in hats and stars from the other phone?"} Nothing here is lost.</div>
+         <div class="btns" style="display:flex;gap:10px;justify-content:center"><button class="big alt no">Not now</button><button class="big yes">Bring them in</button></div>`,
+      );
+      let done = false;
+      const finish = (v: boolean) => {
+        if (done) return;
+        done = true;
+        this.closeSheet();
+        resolve(v);
+      };
+      panel.querySelector(".yes")!.addEventListener("click", () => finish(true));
+      panel.querySelector(".no")!.addEventListener("click", () => finish(false));
+      panel.querySelector(".close")!.addEventListener("click", () => finish(false));
+    });
   }
 
   /** Four are out already: pick a friend to go in and rest. Resolves with it, or null. */
