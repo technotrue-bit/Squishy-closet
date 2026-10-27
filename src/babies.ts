@@ -1,12 +1,14 @@
 // Baby squishies. Now and then a baby is found fast asleep at one of the
 // places. Keep it with a cookie and it comes along with you. How you play with
 // it and what you teach it shapes who it becomes, and one real week after it
-// was found it grows up into that squishy, with that personality. Only facts
-// and rules live here; the babies you see are in nursery.ts.
+// was found it grows up into that squishy, with that personality. Now and then
+// a baby wants something (a song, a treat, a hug); doing it with them helps them
+// grow up sooner and shapes who they become. Only facts and rules live here; the
+// babies you see are in nursery.ts.
 
 import { CATALOG } from "./catalog";
 import { weightOf } from "./boxes";
-import { isMood, MOOD_IDS, type MoodId } from "./personality";
+import { isMood, LESSONS, MOOD_IDS, type MoodId } from "./personality";
 
 /** A baby grows up one real week after it was found. */
 export const GROW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -18,6 +20,17 @@ export const LESSON_WINDOW_MS = 10 * 60 * 1000;
 export const NAP_MS = 3 * 60 * 1000;
 /** With fewer points than this (about three lessons) a baby grows up shy. */
 export const SHY_BELOW = 3;
+/** A new baby asks for its first thing soon after you keep it. */
+export const WANT_FIRST_MS = 25 * 1000;
+/** After a wish comes true, the next one comes along in 2 to 4 minutes. */
+export const WANT_GAP_MS = 2 * 60 * 1000;
+/** A wish nobody got to for a while turns into something else (no hard feelings). */
+export const WANT_STALE_MS = 6 * 60 * 1000;
+/** Each wish come true counts this much toward who it becomes (a lesson is 1). */
+export const WISH_POINTS = 3;
+/** Each wish come true makes it grow up this much sooner, for up to WISH_SPEEDUP_MAX wishes (5 days in all). */
+export const WISH_MS = 10 * 60 * 60 * 1000;
+export const WISH_SPEEDUP_MAX = 12;
 
 export interface Baby {
   /** Its own key (two babies can be the same kind). */
@@ -33,10 +46,16 @@ export interface Baby {
   lessons: number[];
   /** Napping until then (ms), or 0. */
   napUntil: number;
+  /** What it wants to do right now, if anything (a lesson's personality). */
+  want?: MoodId;
+  /** When it started wanting that, or (with no want) when it'll want something next (ms). */
+  wantAt: number;
+  /** Wishes that came true. */
+  wishes: number;
 }
 
 export function newBaby(kind: string, now: number): Baby {
-  return { key: `b${now.toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`, kind, got: now, traits: {}, lessons: [], napUntil: 0 };
+  return { key: `b${now.toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`, kind, got: now, traits: {}, lessons: [], napUntil: 0, wantAt: now + WANT_FIRST_MS, wishes: 0 };
 }
 
 /** Which squishy a sleeping baby is: one you don't have or aren't raising yet. */
@@ -55,8 +74,12 @@ export function pickBabyKind(owned: ReadonlySet<string>, raising: readonly strin
   return from[from.length - 1].id;
 }
 
-/** How long until it grows up, ms (0 when it's ready). */
-export const growLeft = (b: Baby, now: number): number => Math.max(0, b.got + GROW_MS - now);
+/** How long until it grows up, ms (0 when it's ready). Wishes come true bring the day closer. */
+export const growLeft = (b: Baby, now: number): number =>
+  Math.max(0, b.got + GROW_MS - Math.min(b.wishes, WISH_SPEEDUP_MAX) * WISH_MS - now);
+
+/** How grown up it is, 0 when found to 1 when it's ready. */
+export const growth = (b: Baby, now: number): number => 1 - growLeft(b, now) / GROW_MS;
 
 /** "6 days", "1 day", "5 hours", "a few minutes". */
 export function growWords(ms: number): string {
@@ -104,6 +127,55 @@ export function play(b: Baby, now: number): "played" | "woke" {
   return "played";
 }
 
+/** The things a baby can want: one for each lesson. */
+const WANTABLE: MoodId[] = LESSONS.map((l) => l.mood);
+
+/** Something new to want: often what it already loves, but never the same thing twice running. */
+export function pickWant(b: Baby, rand: () => number): MoodId {
+  const from = WANTABLE.filter((m) => m !== b.want);
+  const weight = (m: MoodId) => 1 + Math.min(3, (b.traits[m] ?? 0) * 0.4);
+  let total = 0;
+  for (const m of from) total += weight(m);
+  let r = rand() * total;
+  for (const m of from) {
+    r -= weight(m);
+    if (r < 0) return m;
+  }
+  return from[from.length - 1];
+}
+
+/**
+ * Time passing: a baby that's awake starts wanting something when it's time ("new"), and
+ * a wish left too long turns into a different one ("changed"). Otherwise null.
+ */
+export function stepWant(b: Baby, now: number, rand: () => number): "new" | "changed" | null {
+  if (isNapping(b, now)) return null;
+  if (!b.want) {
+    if (now < b.wantAt) return null;
+    b.want = pickWant(b, rand);
+    b.wantAt = now;
+    return "new";
+  }
+  if (now - b.wantAt < WANT_STALE_MS) return null;
+  b.want = pickWant(b, rand);
+  b.wantAt = now;
+  return "changed";
+}
+
+/**
+ * You did the thing it wanted: it counts a lot toward who it becomes and brings
+ * growing up closer. Returns what it wanted, or null if it wasn't wanting anything.
+ */
+export function fulfil(b: Baby, now: number, rand: () => number): MoodId | null {
+  const m = b.want;
+  if (!m) return null;
+  addTrait(b, m, WISH_POINTS);
+  b.wishes += 1;
+  b.want = undefined;
+  b.wantAt = now + WANT_GAP_MS * (1 + rand());
+  return m;
+}
+
 /** All its points from play and lessons. */
 export const points = (b: Baby): number => MOOD_IDS.reduce((n, m) => n + (b.traits[m] ?? 0), 0);
 
@@ -142,5 +214,9 @@ export function cleanBaby(raw: unknown, known: (id: string) => boolean, cleanNam
     traits,
     lessons: Array.isArray(r.lessons) ? r.lessons.filter((t): t is number => num(t) > 0).slice(-LESSONS_BEFORE_NAP) : [],
     napUntil: num(r.napUntil),
+    ...(isMood(r.want) && WANTABLE.includes(r.want) ? { want: r.want } : {}),
+    // Babies from before wishes start wanting things soon.
+    wantAt: typeof r.wantAt === "number" ? num(r.wantAt) : 0,
+    wishes: Math.min(999, Math.floor(num(r.wishes))),
   };
 }

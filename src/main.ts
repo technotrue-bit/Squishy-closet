@@ -46,7 +46,24 @@ import { Visitors } from "./visitors";
 import { Nursery } from "./nursery";
 import { moodById, randomMood, type MoodId } from "./personality";
 import { combineSaves, decodeSave, encodeSave, findCode, HASH, keepStorage, moveLink } from "./move";
-import { BABIES_MAX, growLeft, growWords, isNapping, moodOf, newBaby, pickBabyKind, play as playBaby, points, teach, SHY_BELOW } from "./babies";
+import {
+  BABIES_MAX,
+  fulfil,
+  growLeft,
+  growth,
+  growWords,
+  isNapping,
+  moodOf,
+  newBaby,
+  pickBabyKind,
+  play as playBaby,
+  points,
+  stepWant,
+  teach,
+  SHY_BELOW,
+  type Baby,
+} from "./babies";
+import { wishFor, wishWords } from "./wishes";
 
 const app = document.getElementById("app")!;
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
@@ -246,12 +263,86 @@ const visitors = new Visitors(stage.scene, stage.shadowMat, {
 const nursery = new Nursery(stage.scene, stage.shadowMat, squishy, {
   fx: (kind, at, count) => fx.emit(kind, at, count),
 });
+// Friends hop around the one you hold, and around a baby asleep where they play.
+crew.blockers = () => {
+  const out = [{ x: squishy.home.x, z: squishy.home.z, r: 1.0 }];
+  const sl = nursery.sleeperAt;
+  if (sl) out.push({ x: sl.x, z: sl.z, r: 0.5 });
+  return out;
+};
+
+/** The icon in a baby's thought bubble, when it wants something. */
+const wantIcon = (b: Baby): string | null => (b.want ? (moodById(b.want).lesson?.icon ?? null) : null);
 
 function syncBabies(): void {
   const now = Date.now();
   nursery.setBabies(
-    save.babies.filter((b) => defById(b.kind)).map((b) => ({ key: b.key, def: defById(b.kind)!, mood: moodOf(b), napping: isNapping(b, now) })),
+    save.babies
+      .filter((b) => defById(b.kind))
+      .map((b) => ({ key: b.key, def: defById(b.kind)!, mood: moodOf(b), napping: isNapping(b, now), want: wantIcon(b), grow: growth(b, now) })),
   );
+}
+
+/** Babies start wanting things now and then; a bubble over their head shows what. */
+let wantClock = 2;
+function stepWants(dt: number): void {
+  wantClock -= dt;
+  if (wantClock > 0) return;
+  wantClock = 2;
+  // Not while you're doing a wish or looking at a card: the wish you're on stays put.
+  if (screen !== "closet" || ui.busy || tutorialStep()) return;
+  const now = Date.now();
+  let changed = false;
+  for (const b of save.babies) {
+    const res = stepWant(b, now, Math.random);
+    if (!res) continue;
+    changed = true;
+    nursery.setWant(b.key, wantIcon(b));
+    if (res === "new" && !ui.busy) ui.toast(`${wishWords(wishFor(b.want!).ask, babyName(b))} Tap it`, 2400);
+  }
+  if (changed) {
+    persist();
+    refreshShelf();
+  }
+}
+
+/** Do what a baby wants: a little game together, then it grows a bit. */
+async function doWish(key: string): Promise<void> {
+  const b = save.babies.find((x) => x.key === key);
+  const def = b && defById(b.kind);
+  if (!b || !def || !b.want || isNapping(b, Date.now())) return;
+  const want = b.want;
+  const pitch = def.pitch;
+  sfx.pop();
+  const did = await ui.wish({
+    def,
+    name: babyName(b),
+    want,
+    beat: (done, n) => {
+      if (done) return sfx.chime(true);
+      if (want === "musical") sfx.hum(pitch * (1 + n * 0.12));
+      else if (want === "bouncy" || want === "sporty") sfx.boing(pitch * (1.2 + n * 0.05));
+      else if (want === "sleepy" || want === "calm" || want === "cuddly") sfx.purr(0.4);
+      else if (want === "silly") sfx.giggle(pitch * 1.3);
+      else if (want === "brave") sfx.whoosh();
+      else {
+        sfx.pop();
+        sfx.squeak(pitch * (1.3 + n * 0.08), 0.08, 0.14);
+      }
+    },
+  });
+  // It may have grown up while you played.
+  if (!did || !save.babies.includes(b)) return;
+  const now = Date.now();
+  b.want = want;
+  fulfil(b, now, Math.random);
+  persist();
+  nursery.wished(key, want, growth(b, now));
+  giveLove(5);
+  const m = moodById(moodOf(b));
+  ui.toast(points(b) >= SHY_BELOW ? `${babyName(b)} grew a little! Becoming ${m.name} ${m.icon}` : `${babyName(b)} grew a little!`, 2200);
+  refreshShelf();
+  checkGrowUp();
 }
 
 /** Seconds of play until a sleeping baby turns up somewhere. */
@@ -298,7 +389,16 @@ function babyInfo(key: string) {
   const def = b && defById(b.kind);
   if (!b || !def) return null;
   const now = Date.now();
-  return { key, def, name: babyName(b), left: growWords(growLeft(b, now)), becoming: points(b) >= SHY_BELOW ? moodById(moodOf(b)) : null, napping: isNapping(b, now) };
+  return {
+    key,
+    def,
+    name: babyName(b),
+    left: growWords(growLeft(b, now)),
+    becoming: points(b) >= SHY_BELOW ? moodById(moodOf(b)) : null,
+    napping: isNapping(b, now),
+    grow: growth(b, now),
+    want: b.want ?? null,
+  };
 }
 
 function openBaby(key: string): void {
@@ -325,6 +425,11 @@ function teachBaby(key: string, mood: MoodId): void {
 function tapBaby(key: string): void {
   const b = save.babies.find((x) => x.key === key);
   if (!b) return;
+  // Wanting something: tapping it is how you find out what, and do it.
+  if (b.want && !isNapping(b, Date.now())) {
+    void doWish(key);
+    return;
+  }
   const res = playBaby(b, Date.now());
   persist();
   nursery.played(key, res === "woke");
@@ -367,7 +472,7 @@ function refreshShelf(): void {
   // Babies sit right after the ones out playing.
   const now = Date.now();
   const at = items.findIndex((it) => it.state === "rest");
-  items.splice(at < 0 ? items.length : at, 0, ...save.babies.map((b) => ({ id: b.kind, state: "baby" as ShelfState, hat: null, key: b.key, napping: isNapping(b, now) })));
+  items.splice(at < 0 ? items.length : at, 0, ...save.babies.map((b) => ({ id: b.kind, state: "baby" as ShelfState, hat: null, key: b.key, napping: isNapping(b, now), want: wantIcon(b) })));
   ui.setShelf(items);
 }
 
@@ -654,6 +759,7 @@ const ui = new Ui(
     },
     babyTap: (key) => openBaby(key),
     teach: teachBaby,
+    doWish: (key) => void doWish(key),
     renameBaby: (key, name) => {
       const b = save.babies.find((x) => x.key === key);
       if (!b) return;
@@ -1014,6 +1120,7 @@ function frame(): void {
     visitors.update(dt, now, bounds);
     nursery.update(dt, now, bounds);
     stepBabies(dt);
+    stepWants(dt);
     stepGrowClock(dt);
   }
   const sway = place.sway(now);

@@ -6,6 +6,7 @@
 import * as THREE from "three";
 import { canvasTex } from "./scene";
 import { placeById, type JobDef, type PlaceId } from "./places";
+import { boxSolids, pushOut, type Solid } from "./nav";
 
 export interface JobSpot {
   job: JobDef;
@@ -38,6 +39,8 @@ export interface PlaceScene {
   box: { at: THREE.Vector3; yaw: number };
   /** Ways other squishies pass by: swimming in the sea, walking or hopping along. */
   paths: VisitPath[];
+  /** The ground footprints of the solid things here, which squishies hop around and never through. */
+  solids: Solid[];
   update(dt: number, t: number): void;
   /** The view rocks gently on the boat. */
   sway(t: number): { roll: number; bob: number };
@@ -246,6 +249,14 @@ function buildTable(): PlaceScene {
     spots,
     wander: [V(-1.4, -3.8), V(2.6, -4.8), V(-2.8, -5.2), V(0, -6.2), V(-0.7, -2.2)],
     box: { at: V(1.1, -3.4), yaw: -0.25 },
+    solids: [
+      ...macColors.map((_, i) => ({ x: -4.6 + i * 1.1, z: -7.5, r: 0.56 })),
+      { x: 4.2, z: -7.2, r: 1.15 },
+      { x: -2.9, z: -3.1, r: 0.45 },
+      { x: -2.15, z: -3.35, r: 0.22 },
+      ...boxSolids(2.85, -3.3, 1.1, 0.8),
+      { x: 0.95, z: -4.9, r: 0.14 },
+    ],
     paths: [
       { how: "hop", from: V(-9, -6.6), to: V(9, -6.6) },
       { how: "walk", from: V(-10, -9.2), to: V(10, -9.2) },
@@ -495,6 +506,14 @@ function buildBeach(): PlaceScene {
     spots,
     wander: [V(0.3, -3.0), V(1.2, -4.0), V(-2.9, -4.8), V(-1.0, -5.6), V(2.0, -5.6)],
     box: { at: V(-1.2, -3.9), yaw: 0.25 },
+    solids: [
+      { x: -4.4, z: -5.4, r: 0.3 },
+      { x: 5.2, z: -8.5, r: 0.3 },
+      { x: -2.75, z: -3.25, r: 0.7 },
+      { x: -1.45, z: -3.5, r: 0.2 },
+      { x: 2.95, z: -3.05, r: 0.42 },
+      { x: 3.4, z: -5.0, r: 0.12 },
+    ],
     paths: [
       { how: "swim", from: V(-10, -10), to: V(10, -10), water: -0.02 },
       { how: "swim", from: V(-12, -14.5), to: V(12, -14.5), water: -0.02 },
@@ -752,6 +771,14 @@ function buildBoat(): PlaceScene {
     spots,
     wander: [V(-0.6, -3.4), V(1.4, -4.4), V(-2.6, -6.8), V(2.0, -6.6), V(0.4, -9.0)],
     box: { at: V(1.0, -3.2), yaw: -0.25 },
+    solids: [
+      { x: 0, z: -5.6, r: 0.18 },
+      { x: -2.95, z: -3.1, r: 0.3 },
+      { x: 3.2, z: -3.0, r: 0.12 },
+      { x: 0.7, z: -8.0, r: 0.2 },
+      { x: -2.3, z: -5.6, r: 0.27 },
+      { x: -1.0, z: -5.6, r: 0.26 },
+    ],
     paths: [
       { how: "swim", from: V(-11, -14.5), to: V(11, -14.5), water: -0.9 },
       { how: "swim", from: V(-13, -19), to: V(13, -19), water: -0.9 },
@@ -983,6 +1010,16 @@ function buildRoom(): PlaceScene {
     spots,
     wander: [V(0.4, -3.0), V(-1.6, -5.4), V(0.6, -5.6), V(-2.9, -4.6), V(2.0, -3.6)],
     box: { at: V(-1.1, -3.6), yaw: 0.25 },
+    solids: [
+      ...boxSolids(-1.2, -7.1, 4.2, 1.2),
+      ...boxSolids(-4.4, -7.4, 1.6, 0.5),
+      { x: 2.0, z: -7.2, r: 0.35 },
+      { x: -2.9, z: -3.4, r: 0.34 },
+      { x: 3.05, z: -3.15, r: 0.3 },
+      { x: 3.6, z: -6.0, r: 0.36 },
+      { x: 3.05, z: -6.05, r: 0.2 },
+      ...boxSolids(1.3, -6.6, 1.8, 0.7),
+    ],
     paths: [{ how: "walk", from: V(-9, -6.1), to: V(9, -6.1) }],
     update: (_dt, t) => {
       cloud.position.x = -0.5 + Math.sin(t * 0.1) * 0.8;
@@ -1258,6 +1295,15 @@ function buildCity(): PlaceScene {
     spots,
     wander: [V(0.6, -2.7), V(1.2, -4.4), V(-1.5, -3.2), V(-0.2, -2.2), V(1.8, -1.2)],
     box: { at: V(-0.55, -4.2), yaw: 0.2 },
+    solids: [
+      ...[[-6.2, -4.8], [6.0, -4.8], [-9.5, -11], [-3.5, -11], [3, -11], [9, -11]].map(([x, z]) => ({ x, z, r: 0.42 })),
+      { x: -8, z: -5.0, r: 0.1 },
+      { x: 8, z: -5.0, r: 0.1 },
+      ...boxSolids(2.95, -3.15, 1.4, 0.9),
+      ...boxSolids(-2.45, -5.15, 2.3, 0.5),
+      ...boxSolids(3.5, -4.95, 1.6, 0.55),
+      { x: -2.85, z: -2.45, r: 0.5 },
+    ],
     paths: [
       { how: "walk", from: V(-10, -10.6), to: V(10, -10.6) },
       { how: "walk", from: V(-10, -5.0), to: V(10, -5.0) },
@@ -1276,12 +1322,21 @@ function buildCity(): PlaceScene {
 
 const BUILD: Record<PlaceId, () => PlaceScene> = { table: buildTable, beach: buildBeach, boat: buildBoat, room: buildRoom, city: buildCity };
 
+/** How far a friend's body reaches out from its middle along the ground, for not bumping into things. */
+export const FRIEND_PAD = 0.7;
+/** Your squishy's own box, at the back of every place. */
+export const HOME_BOX_R = 0.85;
+
 /** Places are built the first time you go there, then kept. */
 const cache = new Map<PlaceId, PlaceScene>();
 export function placeScene(id: PlaceId): PlaceScene {
   let p = cache.get(id);
   if (!p) {
     p = BUILD[id]();
+    // Your squishy's box is solid too, and nobody stands or rests inside anything.
+    p.solids.push({ x: p.box.at.x, z: p.box.at.z, r: HOME_BOX_R });
+    for (const spot of p.spots) pushOut(spot.at, p.solids, FRIEND_PAD);
+    for (const w of p.wander) pushOut(w, p.solids, FRIEND_PAD);
     for (const s of p.spots) s.show(0, false, 0, 0);
     cache.set(id, p);
   }

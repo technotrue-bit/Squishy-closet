@@ -8,7 +8,8 @@ import * as THREE from "three";
 import { Squishy, type Bounds, type Fx } from "./squishy";
 import type { SquishyDef } from "./catalog";
 import type { JobDef } from "./places";
-import type { JobSpot, PlaceScene } from "./placeScenes";
+import { FRIEND_PAD, type JobSpot, type PlaceScene } from "./placeScenes";
+import { pushOut, route, type Solid } from "./nav";
 import * as sfx from "./audio";
 import { moodById, sayLine, type MoodId } from "./personality";
 
@@ -40,6 +41,8 @@ export interface Friend {
   /** It is busy with something you asked for (a visit, play, a cuddle). */
   front: boolean;
   appear: number;
+  /** Counts its trips, so the rest of an old trip is dropped when it sets off somewhere new. */
+  trip: number;
 }
 
 export interface CrewEvents {
@@ -92,6 +95,8 @@ export class Crew {
   private now = 0;
   /** Set while you can't see the closet (a card or the book is open). */
   paused = false;
+  /** Things in the way besides the place's own: the one you hold, a sleeping baby. */
+  blockers: () => Solid[] = () => [];
 
   constructor(
     private scene: THREE.Scene,
@@ -156,7 +161,7 @@ export class Crew {
     bubble.scale.setScalar(0.7);
     bubble.visible = false;
     this.scene.add(bubble);
-    return { id: "", sq, shadow, bubble, bubbleKey: "", state: { kind: "idle", until: 0 }, front: false, appear: 0 };
+    return { id: "", sq, shadow, bubble, bubbleKey: "", state: { kind: "idle", until: 0 }, front: false, appear: 0, trip: 0 };
   }
 
   private removeFriend(f: Friend): void {
@@ -176,6 +181,7 @@ export class Crew {
     f.sq.lean(0, 0);
     f.sq.wakeUp();
     f.front = false;
+    f.trip++;
     f.state = { kind: "idle", until: this.now + 1 + Math.random() * 2 };
   }
 
@@ -490,14 +496,25 @@ export class Crew {
 
   private goTo(f: Friend, at: THREE.Vector3, then: () => void): void {
     f.state = { kind: "move" };
-    // Don't land right on top of another friend.
+    // Don't land right on top of another friend, or inside anything.
     const target = at.clone();
     for (const o of this.friends) {
       if (o === f) continue;
       const d = Math.hypot(o.sq.home.x - target.x, o.sq.home.z - target.z);
       if (d < 1.3) target.x += target.x > o.sq.home.x ? 1.3 - d : d - 1.3;
     }
-    f.sq.hopTo(target, { then });
+    const solids = [...(this.place?.solids ?? []), ...this.blockers()];
+    pushOut(target, solids, FRIEND_PAD);
+    // Hop the way round anything in between, corner to corner.
+    const from = f.sq.isHome ? f.sq.home : f.sq.group.position;
+    const way = route(from, target, solids, FRIEND_PAD).map((p) => new THREE.Vector3(p.x, target.y, p.z));
+    const trip = ++f.trip;
+    const next = (i: number) => {
+      if (f.trip !== trip) return;
+      if (i === way.length - 1) f.sq.hopTo(way[i], { then: () => f.trip === trip && then() });
+      else f.sq.hopTo(way[i], { then: () => next(i + 1) });
+    };
+    next(0);
   }
 
   // ---- moments up front -----------------------------------------------------

@@ -10,6 +10,7 @@ import { HATS, type HatDef } from "./hats";
 import { PLACES, type PlaceId } from "./places";
 import { LOVE_PER_BOX, NAME_MAX, ZOOM_MAX, ZOOM_MIN } from "./save";
 import { LESSONS, moodById, type Mood, type MoodId } from "./personality";
+import { wishFor, wishWords } from "./wishes";
 import type { Thumbs } from "./thumbs";
 import qrcode from "qrcode-generator";
 
@@ -71,6 +72,47 @@ const CSS = `
 .ui .lessons button i { font-style: normal; font-size: 30px; line-height: 1.1; }
 .ui .lessons button:active { transform: translateY(2px); box-shadow: 0 1px 0 #f3c6da; }
 .ui .lessons.napping button { filter: grayscale(0.6) opacity(0.6); }
+.ui .shelf .baby .wants { position: absolute; top: 2px; right: 2px; width: 28px; height: 28px; border-radius: 14px; background: #fff; box-shadow: 0 2px 0 #ffb3d1; font-size: 17px; line-height: 28px; text-align: center; animation: bob 1.2s ease-in-out infinite; }
+.ui .grow { height: 12px; border-radius: 6px; background: #f6dbe8; overflow: hidden; margin: 5px 0 2px; }
+.ui .grow i { display: block; height: 100%; border-radius: 6px; background: linear-gradient(90deg, #9ee6a8, #4fc46a); }
+.ui .wish-card { display: flex; align-items: center; gap: 10px; border-radius: 22px; background: linear-gradient(180deg, #fff6c9, #ffe58a); box-shadow: 0 4px 0 #e8c24e; padding: 10px 12px; margin: 4px 0 12px; }
+.ui .wish-card > i { font-style: normal; font-size: 40px; line-height: 1; animation: wiggle 1.6s ease-in-out infinite; }
+.ui .wish-card .w { flex: 1; min-width: 0; font-weight: 900; font-size: 17px; color: #8a5a00; line-height: 1.2; }
+.ui .wish-card .w small { display: block; font-weight: 800; font-size: 13px; color: #a8781a; }
+.ui .wish-card button { flex: none; padding: 10px 16px; border-radius: 999px; font-size: 18px; font-weight: 900; color: #fff; background: linear-gradient(180deg, #ff9cc8, #ff4f8d); box-shadow: 0 4px 0 #c2346c; }
+.ui .wish-card button:active { transform: translateY(2px); box-shadow: 0 2px 0 #c2346c; }
+
+.ui .wishplay { position: absolute; inset: 0; display: none; pointer-events: auto; background: radial-gradient(circle at 50% 70%, #fff7fb 0%, #ffd9ea 55%, #e9d4ff 100%); touch-action: none; overflow: hidden; }
+.ui .wishplay.on { display: block; animation: fadeIn 0.25s ease-out; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.ui .wishplay .close { position: absolute; top: calc(env(safe-area-inset-top) + 12px); right: 12px; z-index: 3; }
+.ui.framed .wishplay .close { top: calc(env(safe-area-inset-top) + 64px); }
+.ui .wishplay h1 { position: absolute; left: 16px; right: 70px; top: calc(env(safe-area-inset-top) + 16px); margin: 0; font-size: 28px; font-weight: 900; color: #e2508c; line-height: 1.1; }
+.ui.framed .wishplay h1 { top: calc(env(safe-area-inset-top) + 66px); }
+.ui .wishplay .how { position: absolute; left: 16px; right: 16px; bottom: calc(env(safe-area-inset-bottom) + 64px); text-align: center; font-weight: 900; font-size: 20px; color: #a0607f; }
+.ui .wishplay .dots { position: absolute; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom) + 28px); display: flex; justify-content: center; gap: 8px; }
+.ui .wishplay .dots i { width: 18px; height: 18px; border-radius: 9px; background: #fff; box-shadow: inset 0 0 0 3px #ffb3d1; transition: background 0.2s, transform 0.2s; }
+.ui .wishplay .dots i.on { background: #ff6fa5; box-shadow: none; transform: scale(1.15); }
+.ui .wishplay .kid { position: absolute; left: 50%; top: 58%; width: 190px; height: 190px; margin: -95px 0 0 -95px; touch-action: none; }
+.ui .wishplay .kid img { width: 100%; height: 100%; display: block; pointer-events: none; -webkit-user-drag: none; }
+.ui .wishplay .kid.boing { animation: boing 0.5s cubic-bezier(.3,1.6,.5,1); }
+.ui .wishplay .kid.rock img { animation: rock 1.1s ease-in-out infinite; }
+.ui .wishplay .kid.yay { animation: yay 0.8s cubic-bezier(.3,1.6,.5,1) 2; }
+@keyframes boing { 0% { transform: scale(1.15, 0.85); } 40% { transform: translateY(-50px) scale(0.92, 1.1); } 100% { transform: none; } }
+@keyframes rock { 0%,100% { transform: rotate(-7deg); } 50% { transform: rotate(7deg); } }
+@keyframes yay { 0% { transform: scale(1); } 30% { transform: translateY(-40px) scale(1.12); } 60% { transform: scale(1.1, 0.9); } 100% { transform: none; } }
+.ui .wishplay .ring { position: absolute; inset: -14px; width: calc(100% + 28px); height: calc(100% + 28px); pointer-events: none; transform: rotate(-90deg); }
+.ui .wishplay .ring circle { fill: none; stroke-width: 10; stroke-linecap: round; }
+.ui .wishplay .thing { position: absolute; width: 76px; height: 76px; margin: -38px 0 0 -38px; display: grid; place-items: center; font-size: 54px; line-height: 1; touch-action: none; cursor: pointer; }
+.ui .wishplay .thing.float { animation: drift 2.4s ease-in-out infinite; }
+.ui .wishplay .thing.popped { animation: popOut 0.35s ease-out forwards; pointer-events: none; }
+.ui .wishplay .thing.home { transition: left 0.3s cubic-bezier(.3,1.5,.5,1), top 0.3s cubic-bezier(.3,1.5,.5,1); }
+.ui .wishplay .thing.grab { transform: scale(1.25); filter: drop-shadow(0 8px 6px rgba(120,40,80,0.3)); }
+@keyframes drift { 0%,100% { transform: translateY(0) rotate(-6deg); } 50% { transform: translateY(-14px) rotate(6deg); } }
+@keyframes popOut { to { transform: scale(1.8); opacity: 0; } }
+.ui .wishplay .puff { position: absolute; font-size: 30px; pointer-events: none; animation: puff 1.1s ease-out forwards; }
+@keyframes puff { from { transform: translate(-50%, 0) scale(0.6); opacity: 1; } to { transform: translate(-50%, -110px) scale(1.2); opacity: 0; } }
+.ui .wishplay .yay { position: absolute; left: 0; right: 0; top: 30%; text-align: center; font-size: 36px; font-weight: 900; color: #e2508c; text-shadow: 0 3px 0 #fff; animation: cardIn 0.45s cubic-bezier(.3,1.6,.5,1); pointer-events: none; }
 .ui .sheet .tip { text-align: center; font-weight: 800; font-size: 14px; color: #a0607f; margin: 12px 0 0; }
 .ui .jobs { display: flex; align-items: center; gap: 4px; font-weight: 900; font-size: 15px; color: #2a86c4; background: rgba(255,255,255,0.7); padding: 3px 10px 3px 6px; border-radius: 999px; transition: transform 0.2s; }
 .ui .jobs.beat { transform: scale(1.25); }
@@ -139,9 +181,13 @@ const CSS = `
 .ui .book { position: absolute; inset: 0; display: none; pointer-events: auto; background: linear-gradient(180deg, #fff4fa, #ffe6f1); overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y; }
 .ui .book.on { display: block; }
 .ui .book .head { position: sticky; top: 0; z-index: 2; padding: calc(env(safe-area-inset-top) + 12px) 70px 10px; text-align: center; background: linear-gradient(180deg, #fff4fa 80%, rgba(255,244,250,0)); }
+.ui.framed .book .head { padding-top: calc(env(safe-area-inset-top) + 58px); }
 .ui .book h1 { margin: 0; font-size: 28px; font-weight: 900; color: #e2508c; }
 .ui .book .found { font-weight: 900; font-size: 18px; color: #9a72e0; }
-.ui .book .close { position: absolute; top: calc(env(safe-area-inset-top) + 10px); right: 12px; }
+.ui .book .back { position: absolute; top: calc(env(safe-area-inset-top) + 10px); left: 12px; width: 56px; height: 56px; border-radius: 28px; background: linear-gradient(180deg, #ffb3d1, #ff5f9c); box-shadow: 0 4px 0 #c2346c; }
+.ui .book .back:active { transform: translateY(2px); box-shadow: 0 2px 0 #c2346c; }
+.ui .book .done { display: block; margin: 22px auto 0; padding: 14px 40px; border-radius: 999px; font-size: 22px; font-weight: 900; color: #fff; background: linear-gradient(180deg, #ffb3d1, #ff5f9c); box-shadow: 0 5px 0 #c2346c; }
+.ui.book-on .gear, .ui.wish-on .gear { display: none; }
 .ui .book h2 { margin: 18px 16px 8px; font-size: 20px; font-weight: 900; color: #7350b8; display: flex; justify-content: space-between; }
 .ui .book h2 span { color: #c58ab0; font-size: 16px; }
 .ui .book .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 0 12px; }
@@ -218,6 +264,7 @@ const PLACE_PICS: Record<PlaceId, string> = {
 };
 const STAR = `<svg viewBox="0 0 24 24"><path d="M12 2l3 6.5 7 .8-5.2 4.8 1.4 7L12 17.6 5.8 21.1l1.4-7L2 9.3l7-.8z" fill="#ffd84d" stroke="#fff" stroke-width="1.5"/></svg>`;
 const PEN = `<svg width="18" height="18" viewBox="0 0 24 24"><path d="M4 20l1-5L16 4l4 4L9 19z" fill="#ff7fb0"/><path d="M4 20l1-5 4 4z" fill="#ffd6e6"/></svg>`;
+const BACK = `<svg width="30" height="30" viewBox="0 0 30 30"><path d="M18 6l-9 9 9 9" fill="none" stroke="#fff" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const CLOSE = `<svg width="24" height="24" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" stroke="#e2508c" stroke-width="3.5" stroke-linecap="round"/></svg>`;
 /** A pointing hand, finger tip at the top left. */
 const HAND = `<svg viewBox="0 0 64 64"><path d="M22 6c3 0 5 2 5 5v17l3-1c2-1 5 0 6 2 2-1 5 0 6 2 2-1 6 0 6 3v12c0 9-6 15-15 15h-3c-6 0-10-3-13-8l-8-13c-1-2 0-5 3-5 2 0 3 1 4 2l2 3V11c0-3 2-5 4-5z" fill="#fff" stroke="#5a2a4a" stroke-width="3" stroke-linejoin="round"/><path d="M30 29v8M36 31v7M42 33v6" stroke="#5a2a4a" stroke-width="2.5" stroke-linecap="round"/></svg>`;
@@ -253,6 +300,8 @@ export interface UiHandlers {
   babyTap(key: string): void;
   teach(key: string, mood: MoodId): void;
   renameBaby(key: string, name: string): void;
+  /** Do what a baby wants (from its card). */
+  doWish(key: string): void;
   /** A link that carries the whole collection to another phone. */
   moveLink(): Promise<string>;
   /** Squishies from another phone's link or code: how many were new, or null when it isn't a good code. */
@@ -268,6 +317,18 @@ export interface BabyInfo {
   /** Who it's becoming, or null while it's too early to tell. */
   becoming: Mood | null;
   napping: boolean;
+  /** How grown up, 0 to 1. */
+  grow: number;
+  /** What it wants to do right now. */
+  want: MoodId | null;
+}
+
+export interface WishGame {
+  def: SquishyDef;
+  name: string;
+  want: MoodId;
+  /** A happy sound: each step, and when it's all done. */
+  beat(done: boolean, step: number): void;
 }
 
 export interface CardInfo {
@@ -303,6 +364,8 @@ export class Ui {
   private toastTimer = 0;
   private cardDone: (() => void) | null = null;
   private sheetEl: HTMLElement;
+  private wishEl: HTMLElement;
+  private wishDone: ((did: boolean) => void) | null = null;
   private jobsEl: HTMLElement;
   private cookiesEl: HTMLElement;
   private hatsDot: HTMLElement;
@@ -317,6 +380,8 @@ export class Ui {
     document.head.appendChild(style);
     this.root = document.createElement("div");
     this.root.className = "ui";
+    // Played inside TrueAIGaming's page, its own buttons float over the top middle: keep titles below them.
+    if (window.parent !== window) this.root.classList.add("framed");
     this.root.innerHTML = `
       <div class="layer title">
         <div class="logo">Aurora's<br>World<small>Squishy Island</small></div>
@@ -342,6 +407,7 @@ export class Ui {
       <div class="modal"></div>
       <div class="sheet"></div>
       <div class="book"></div>
+      <div class="wishplay"></div>
       <div class="toast"></div>`;
     document.body.appendChild(this.root);
     const q = <T extends Element = HTMLElement>(sel: string) => this.root.querySelector(sel) as unknown as T;
@@ -359,6 +425,7 @@ export class Ui {
     this.bookEl = q(".book");
     this.toastEl = q(".toast");
     this.sheetEl = q(".sheet");
+    this.wishEl = q(".wishplay");
     this.jobsEl = q(".jobs");
     this.cookiesEl = q(".cookies");
     this.hatsDot = q(".hats-btn .dot");
@@ -383,6 +450,12 @@ export class Ui {
     this.modal.addEventListener("click", (e) => {
       if (e.target === this.modal) this.closeCard();
     });
+    window.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      if (this.wishEl.classList.contains("on")) this.endWish(false);
+      else if (this.sheetEl.classList.contains("on")) this.closeSheet();
+      else if (this.bookEl.classList.contains("on") && !this.modal.classList.contains("on")) this.closeBook();
+    });
   }
 
   show(screen: Screen): void {
@@ -390,7 +463,12 @@ export class Ui {
   }
 
   get busy(): boolean {
-    return this.modal.classList.contains("on") || this.bookEl.classList.contains("on") || this.sheetEl.classList.contains("on");
+    return (
+      this.modal.classList.contains("on") ||
+      this.bookEl.classList.contains("on") ||
+      this.sheetEl.classList.contains("on") ||
+      this.wishEl.classList.contains("on")
+    );
   }
 
   private coverChanged(): void {
@@ -443,7 +521,7 @@ export class Ui {
    * out playing come first; tap a friend to hold it, tap a resting one to bring
    * it out, tap the little house to send a friend in to rest.
    */
-  setShelf(items: { id: string; state: ShelfState; hat: string | null; key?: string; napping?: boolean }[]): void {
+  setShelf(items: { id: string; state: ShelfState; hat: string | null; key?: string; napping?: boolean; want?: string | null }[]): void {
     const left = this.shelf.scrollLeft;
     this.shelf.innerHTML = "";
     for (const it of items) {
@@ -464,6 +542,11 @@ export class Ui {
         zz.className = "zz";
         zz.textContent = "💤";
         b.appendChild(zz);
+      } else if (it.want) {
+        const w = document.createElement("span");
+        w.className = "wants";
+        w.textContent = it.want;
+        b.appendChild(w);
       }
       const key = it.key;
       b.addEventListener("click", () => (key ? this.h.babyTap(key) : this.h.shelfTap(it.id)));
@@ -720,15 +803,20 @@ export class Ui {
     });
   }
 
-  /** A baby you're raising: how long until it grows up, who it's becoming, and lessons. */
+  /** A baby you're raising: what it wants, how long until it grows up, who it's becoming, and lessons. */
   babySheet(b: BabyInfo): void {
     const becoming = b.becoming ? `${b.becoming.icon} <b>${esc(b.becoming.name)}</b>` : "<b>Shy</b> so far. Teach me things!";
+    const want = b.want && !b.napping ? LESSONS.find((l) => l.mood === b.want) : null;
+    const wishCard = want
+      ? `<div class="wish-card"><i>${want.icon}</i><div class="w">${esc(wishWords(wishFor(want.mood).title, b.name))}<small>Do it to help me grow up!</small></div><button class="go">Let's go!</button></div>`
+      : "";
     const panel = this.openSheet(
       `<div class="baby-top"><img alt=""><div style="flex:1;min-width:0"><input maxlength="${NAME_MAX}" enterkeyhint="done" aria-label="Name">
-        <div class="facts">Grows up in <b>${esc(b.left)}</b><br>Becoming: ${becoming}</div></div></div>
-       <div class="sub">${b.napping ? "Shh, napping! Come back soon." : "What should we learn today?"}</div>
+        <div class="facts">Grows up in <b>${esc(b.left)}</b><div class="grow"><i style="width:${Math.round(Math.max(0.04, Math.min(1, b.grow)) * 100)}%"></i></div>Becoming: ${becoming}</div></div></div>
+       ${wishCard}
+       <div class="sub">${b.napping ? "Shh, napping! Come back soon." : want ? "Or learn something else:" : "What should we learn today?"}</div>
        <div class="lessons${b.napping ? " napping" : ""}">${LESSONS.map((l) => `<button data-mood="${l.mood}"><i>${l.icon}</i>${esc(l.name)}</button>`).join("")}</div>
-       <div class="tip">Play with your baby by tapping it. Waking it from a nap makes it grumpy!</div>`,
+       <div class="tip">${want ? "When a baby wants something, doing it with them helps them grow up sooner!" : "Play with your baby by tapping it. Waking it from a nap makes it grumpy!"}</div>`,
     );
     const img = panel.querySelector("img")!;
     this.thumbs.want(b.def.id, (url) => (img.src = url));
@@ -738,6 +826,11 @@ export class Ui {
     input.addEventListener("change", commit);
     input.addEventListener("keydown", (e) => {
       if (e.key === "Enter") input.blur();
+    });
+    panel.querySelector(".wish-card .go")?.addEventListener("click", () => {
+      commit();
+      this.closeSheet();
+      this.h.doWish(b.key);
     });
     for (const btn of panel.querySelectorAll<HTMLButtonElement>(".lessons button")) {
       btn.addEventListener("click", () => {
@@ -750,6 +843,267 @@ export class Ui {
         this.h.teach(b.key, btn.dataset.mood as MoodId);
       });
     }
+  }
+
+  // ---- doing what a baby wants -------------------------------------------------
+
+  /**
+   * A little game with the baby: tap the notes to sing, drag treats over to share,
+   * hold it for a hug. Resolves true when it's done, false if you closed it.
+   */
+  wish(g: WishGame): Promise<boolean> {
+    this.endWish(false);
+    const w = wishFor(g.want);
+    const el = this.wishEl;
+    const total = w.need;
+    el.innerHTML = `
+      <button class="round close" aria-label="Close">${CLOSE}</button>
+      <h1>${esc(wishWords(w.title, g.name))}</h1>
+      <div class="kid"><img alt=""></div>
+      <div class="how">${esc(wishWords(w.how, g.name))}</div>
+      <div class="dots">${w.play === "hold" ? "" : Array.from({ length: total }, () => "<i></i>").join("")}</div>`;
+    el.classList.add("on");
+    this.root.classList.add("wish-on");
+    this.coverChanged();
+    const kid = el.querySelector<HTMLElement>(".kid")!;
+    const img = kid.querySelector("img")!;
+    this.thumbs.want(g.def.id, (url) => (img.src = url));
+    let done = 0;
+    let over = false;
+    const timers: number[] = [];
+    const later = (fn: () => void, ms: number) => timers.push(window.setTimeout(fn, ms));
+    const rnd = (a: number, b: number) => a + Math.random() * (b - a);
+    const box = () => el.getBoundingClientRect();
+    const kidMid = () => {
+      const r = kid.getBoundingClientRect();
+      const o = box();
+      return { x: r.left + r.width / 2 - o.left, y: r.top + r.height / 2 - o.top, r: r.width / 2 };
+    };
+    const puff = (x: number, y: number, icon: string) => {
+      const p = document.createElement("div");
+      p.className = "puff";
+      p.textContent = icon;
+      p.style.left = `${x}px`;
+      p.style.top = `${y}px`;
+      el.appendChild(p);
+      later(() => p.remove(), 1200);
+    };
+    const boing = () => {
+      kid.classList.remove("boing");
+      void kid.offsetWidth;
+      kid.classList.add("boing");
+    };
+    const finish = () => {
+      if (over) return;
+      over = true;
+      kid.classList.remove("boing", "rock");
+      void kid.offsetWidth;
+      kid.classList.add("yay");
+      el.querySelector(".how")!.textContent = "";
+      for (const t of el.querySelectorAll(".thing")) t.remove();
+      const yay = document.createElement("div");
+      yay.className = "yay";
+      yay.textContent = w.yay;
+      el.appendChild(yay);
+      const m = kidMid();
+      for (let i = 0; i < 8; i++) later(() => puff(m.x + rnd(-m.r, m.r), m.y - m.r * 0.6, i % 2 ? "💖" : "✨"), i * 90);
+      g.beat(true, total);
+      later(() => this.endWish(true), 1700);
+    };
+    const step = () => {
+      if (over) return;
+      done++;
+      const dots = el.querySelectorAll(".dots i");
+      dots[done - 1]?.classList.add("on");
+      g.beat(false, done);
+      if (done >= total) later(finish, 350);
+    };
+
+    // A spot in the open, away from the baby and the words.
+    const openSpot = () => {
+      const o = box();
+      const m = kidMid();
+      for (let tries = 0; ; tries++) {
+        const x = rnd(50, o.width - 50);
+        const y = rnd(o.height * 0.2, o.height * 0.78);
+        if (Math.hypot(x - m.x, y - m.y) > m.r + 60 || tries > 30) return { x, y };
+      }
+    };
+
+    if (w.play === "pop") {
+      const one = w.things.length === 1 && w.things[0] === "⚽";
+      const spawn = () => {
+        if (over) return;
+        const t = document.createElement("div");
+        t.className = "thing float";
+        t.textContent = w.things[Math.floor(Math.random() * w.things.length)];
+        const p = openSpot();
+        t.style.left = `${p.x}px`;
+        t.style.top = `${p.y}px`;
+        t.style.animationDelay = `${-rnd(0, 2)}s`;
+        t.addEventListener("pointerdown", (e) => {
+          e.preventDefault();
+          if (over || t.classList.contains("popped")) return;
+          t.classList.add("popped");
+          puff(p.x, p.y - 20, w.things[0] === "👻" ? "💨" : "✨");
+          boing();
+          step();
+          later(() => t.remove(), 400);
+          if (done < total) later(spawn, one ? 250 : 500);
+        });
+        el.appendChild(t);
+      };
+      for (let i = 0; i < (one ? 1 : Math.min(3, total)); i++) later(spawn, 200 + i * 250);
+    } else if (w.play === "bounce") {
+      kid.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        if (over) return;
+        boing();
+        const m = kidMid();
+        puff(m.x + rnd(-40, 40), m.y - m.r, w.things[0]);
+        step();
+      });
+    } else if (w.play === "feed") {
+      const o = box();
+      w.things.slice(0, total).forEach((icon, i) => {
+        const t = document.createElement("div");
+        t.className = "thing home";
+        t.textContent = icon;
+        const hx = (o.width / (total + 1)) * (i + 1);
+        const hy = Math.max(150, o.height * 0.26);
+        const place = (x: number, y: number) => {
+          t.style.left = `${x}px`;
+          t.style.top = `${y}px`;
+        };
+        place(hx, hy);
+        let grab: { dx: number; dy: number } | null = null;
+        t.addEventListener("pointerdown", (e) => {
+          e.preventDefault();
+          if (over) return;
+          const b = box();
+          grab = { dx: e.clientX - b.left - parseFloat(t.style.left), dy: e.clientY - b.top - parseFloat(t.style.top) };
+          t.classList.remove("home");
+          t.classList.add("grab");
+          try {
+            t.setPointerCapture(e.pointerId);
+          } catch {
+            /* keeps working without it */
+          }
+        });
+        t.addEventListener("pointermove", (e) => {
+          if (!grab) return;
+          const b = box();
+          place(e.clientX - b.left - grab.dx, e.clientY - b.top - grab.dy);
+        });
+        const drop = () => {
+          if (!grab) return;
+          grab = null;
+          t.classList.remove("grab");
+          const m = kidMid();
+          const x = parseFloat(t.style.left);
+          const y = parseFloat(t.style.top);
+          if (Math.hypot(x - m.x, y - m.y) < m.r + 30) {
+            t.classList.add("popped");
+            puff(m.x, m.y - m.r * 0.5, "💖");
+            boing();
+            step();
+            later(() => t.remove(), 400);
+          } else {
+            // Not quite: it springs back to try again.
+            t.classList.add("home");
+            place(hx, hy);
+          }
+        };
+        t.addEventListener("pointerup", drop);
+        t.addEventListener("pointercancel", drop);
+        el.appendChild(t);
+      });
+    } else {
+      // Hold: a ring fills while you keep holding; let go and it waits for you (it only slips back a little).
+      const R = 104;
+      const C = 2 * Math.PI * R;
+      kid.insertAdjacentHTML(
+        "beforeend",
+        `<svg class="ring" viewBox="0 0 228 228"><circle cx="114" cy="114" r="${R}" stroke="#fff"/><circle class="fillring" cx="114" cy="114" r="${R}" stroke="#ff6fa5" stroke-dasharray="${C}" stroke-dashoffset="${C}"/></svg>`,
+      );
+      const fillRing = kid.querySelector<SVGCircleElement>(".fillring")!;
+      // Time held counts by the clock, not by frames, so a slow phone fills it just as fast.
+      let banked = 0;
+      let since = 0;
+      let holding = false;
+      let lastBeat = 0;
+      let lastPuff = 0;
+      let prev = performance.now();
+      const heldNow = (t: number) => banked + (holding ? (t - since) / 1000 : 0);
+      const check = () => {
+        if (!over && heldNow(performance.now()) >= total) finish();
+      };
+      const tick = (t: number) => {
+        if (over || !this.wishEl.classList.contains("on")) return;
+        const dt = Math.min(0.1, (t - prev) / 1000);
+        prev = t;
+        if (!holding) banked = Math.max(0, banked - dt * 0.3);
+        const held = heldNow(t);
+        fillRing.setAttribute("stroke-dashoffset", String(C * (1 - Math.min(1, held / total))));
+        if (holding && t - lastPuff > 380) {
+          lastPuff = t;
+          const m = kidMid();
+          puff(m.x + rnd(-m.r, m.r), m.y - m.r * 0.4, w.things[Math.floor(Math.random() * w.things.length)]);
+        }
+        if (holding && Math.floor(held) > lastBeat) {
+          lastBeat = Math.floor(held);
+          g.beat(false, lastBeat);
+        }
+        if (held >= total) {
+          finish();
+          return;
+        }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+      const down = (e: PointerEvent) => {
+        e.preventDefault();
+        if (over || holding) return;
+        holding = true;
+        since = performance.now();
+        kid.classList.add("rock");
+        try {
+          kid.setPointerCapture(e.pointerId);
+        } catch {
+          /* keeps working without it */
+        }
+        later(check, (total - banked) * 1000 + 30);
+      };
+      const up = () => {
+        if (!holding) return;
+        banked = heldNow(performance.now());
+        holding = false;
+        kid.classList.remove("rock");
+        check();
+      };
+      kid.addEventListener("pointerdown", down);
+      kid.addEventListener("pointerup", up);
+      kid.addEventListener("pointercancel", up);
+    }
+
+    el.querySelector(".close")!.addEventListener("click", () => this.endWish(false));
+    return new Promise((resolve) => {
+      this.wishDone = (did) => {
+        for (const t of timers) clearTimeout(t);
+        resolve(did);
+      };
+    });
+  }
+
+  private endWish(did: boolean): void {
+    if (!this.wishEl.classList.contains("on")) return;
+    this.wishEl.classList.remove("on");
+    this.root.classList.remove("wish-on");
+    this.wishEl.innerHTML = "";
+    const done = this.wishDone;
+    this.wishDone = null;
+    done?.(did);
+    this.coverChanged();
   }
 
   hint(text: string | null, sub?: string, dots?: { done: number; total: number }): void {
@@ -848,8 +1202,8 @@ export class Ui {
   /** The Squishy Book: every squishy, with shadows for ones not found yet. */
   book(owned: Record<string, { mood?: MoodId }>, nameOf: (id: string) => string): void {
     const found = CATALOG.filter((d) => owned[d.id]).length;
-    let html = `<div class="head"><h1>Squishy Book</h1><div class="found">You found ${found} of ${CATALOG.length}!</div></div>
-      <button class="round close" aria-label="Close">${CLOSE}</button>`;
+    // The way out sits in the sticky header, so it is there however far down you scroll.
+    let html = `<div class="head"><button class="back" aria-label="Back">${BACK}</button><h1>Squishy Book</h1><div class="found">You found ${found} of ${CATALOG.length}!</div></div>`;
     for (const fam of FAMILIES) {
       const defs = CATALOG.filter((d) => d.family === fam.id);
       const got = defs.filter((d) => owned[d.id]).length;
@@ -857,12 +1211,14 @@ export class Ui {
       for (const d of defs) html += `<button class="cell${owned[d.id] ? "" : " missing"}" data-id="${d.id}"><b>${d.no}</b><img alt=""></button>`;
       html += `</div>`;
     }
-    html += `<div class="pad"></div>`;
+    html += `<button class="done">Done</button><div class="pad"></div>`;
     this.bookEl.innerHTML = html;
     this.bookEl.scrollTop = 0;
     this.bookEl.classList.add("on");
+    this.root.classList.add("book-on");
     this.coverChanged();
-    this.bookEl.querySelector(".close")!.addEventListener("click", () => this.closeBook());
+    this.bookEl.querySelector(".back")!.addEventListener("click", () => this.closeBook());
+    this.bookEl.querySelector(".done")!.addEventListener("click", () => this.closeBook());
     for (const cell of this.bookEl.querySelectorAll<HTMLButtonElement>(".cell")) {
       const id = cell.dataset.id!;
       const img = cell.querySelector("img")!;
@@ -881,6 +1237,7 @@ export class Ui {
 
   closeBook(): void {
     this.bookEl.classList.remove("on");
+    this.root.classList.remove("book-on");
     this.coverChanged();
   }
 }

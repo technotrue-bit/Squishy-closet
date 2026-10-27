@@ -8,7 +8,7 @@ import { drawFace, FACE_H, FACE_W, type Expression } from "./face";
 import type { SquishyDef } from "./catalog";
 import { feelFor, type Feel } from "./feel";
 import { buildParts, type PartPin } from "./parts";
-import { buildHat, type HatCtx, type HatModel } from "./hatModels";
+import { buildHat, hatFit, type HatCtx, type HatModel } from "./hatModels";
 import { drawSkin, SKIN_H, SKIN_W } from "./skin";
 import * as sfx from "./audio";
 import { MOODS, type Mood } from "./personality";
@@ -61,12 +61,18 @@ interface Pinned {
 }
 
 /** Extras that sit on top of the head; a hat takes their place. */
-const HEAD_PARTS = new Set(["witchHat", "stem", "leaf"]);
+const HEAD_PARTS = new Set(["witchHat", "stem", "leaf", "catEars"]);
 
 /** The hat: it lags and wobbles behind every hop, and pops up when tapped. */
 interface HatRig {
   id: string;
   model: HatModel;
+  /** Rides on the head: sits on `ring`, the row of the body where the hat's rim meets it. */
+  seat: THREE.Group;
+  ring: number;
+  /** The ring's width now against at rest: a squashed, wider head makes the hat a little wider too. */
+  restR: number;
+  wide: number;
   /** Wobbles about x and z, stretch in y. */
   wob: THREE.Group;
   /** Lifts and spins when popped. */
@@ -316,6 +322,7 @@ export class Squishy {
 
     // Extras, each pinned to the vertex nearest where it belongs.
     for (const p of this.pinned) disposeTree(p.holder);
+    if (this.hat) disposeTree(this.hat.seat);
     this.partsGroup.clear();
     this.pinned = [];
     this.hat = null;
@@ -325,13 +332,23 @@ export class Squishy {
     if (model) {
       const wob = new THREE.Group();
       const pop = new THREE.Group();
-      // A little bigger than life, so it reads on a phone.
-      model.obj.scale.multiplyScalar(1.3);
+      // Sized to this head: the rim sits where the body is as wide as the hat's opening.
+      const fit = hatFit(hat!);
+      const k = fit.r / fit.fit;
+      model.obj.scale.multiply(new THREE.Vector3(k, k * (fit.sy ?? 1), k));
       pop.add(model.obj);
       wob.add(pop);
+      const seat = new THREE.Group();
+      seat.add(wob);
+      this.partsGroup.add(seat);
+      const ring = ringAt(this.grid.base, fit.r);
       this.hat = {
         id: hat!,
         model,
+        seat,
+        ring,
+        restR: ringRadius(this.grid.base, ring),
+        wide: 1,
         wob,
         pop,
         wx: new Spring(150, 8),
@@ -345,8 +362,6 @@ export class Squishy {
         lastV: new THREE.Vector3(),
         fresh: true,
       };
-      // Sits a little into the top so it hugs the bun.
-      pins.push({ obj: wob, dir: new THREE.Vector3(0, 1, 0), lift: -0.04, ref: "forward" });
     }
     for (const pin of pins) {
       let best = 0;
@@ -1116,6 +1131,7 @@ export class Squishy {
       holder.position.set(this.pos[i], this.pos[i + 1], this.pos[i + 2]).addScaledVector(_y, pin.lift);
       pin.animate?.(pin.obj, this.now);
     }
+    if (this.hat) this.hat.wide = seatOnRing(this.hat.seat, this.pos, this.hat.ring) / this.hat.restR;
   }
 
   private rebuild(geometry: boolean): void {
@@ -1185,6 +1201,9 @@ export class Squishy {
     h.wob.children[0].scale.set(1 - h.wy.x * 0.5, 1 + h.wy.x, 1 - h.wy.x * 0.5);
     h.pop.position.y = h.popH;
     h.pop.rotation.y = h.spin;
+    // The hat widens with a squashed head but keeps most of its height, so it never looks pulled flat.
+    // (Far friends squash by stretching the whole body; the hat then only takes a little of the stretch.)
+    h.seat.scale.set(h.wide, Math.pow(this.body.scale.y, -0.75), h.wide);
     const ctx: HatCtx = { energy: this.energy, sleeping: this.sleeping, dt };
     h.model.animate?.(this.now, ctx);
   }
@@ -1343,4 +1362,71 @@ function addGlitter(m: THREE.MeshPhysicalMaterial, time: { value: number }, spar
       );
   };
   m.customProgramCacheKey = () => "glitter";
+}
+
+/** How wide a row of the body is at rest, on average. */
+function ringRadius(base: Float32Array, j: number): number {
+  let sum = 0;
+  for (let i = 0; i < SEG; i++) {
+    const k = vid(i, j) * 3;
+    sum += Math.hypot(base[k], base[k + 2]);
+  }
+  return sum / SEG;
+}
+
+/** The row of the body (above the middle) whose width is closest to `r`, at rest. */
+export function ringAt(base: Float32Array, r: number): number {
+  let best = RINGS - 1;
+  let bestErr = Infinity;
+  for (let j = Math.floor(RINGS / 2); j < RINGS; j++) {
+    const err = Math.abs(ringRadius(base, j) - r);
+    if (err < bestErr) {
+      bestErr = err;
+      best = j;
+    }
+  }
+  return best;
+}
+
+const _c = new THREE.Vector3();
+const _a = new THREE.Vector3();
+const _b = new THREE.Vector3();
+const _n = new THREE.Vector3();
+
+/**
+ * Puts a hat on a ring of the (squished, leaning, dented) body: at the ring's middle, standing square to it,
+ * so it stays seated on the head whatever the body does. Returns how wide the ring is now.
+ */
+function seatOnRing(seat: THREE.Object3D, pos: Float32Array, ring: number): number {
+  _c.set(0, 0, 0);
+  for (let i = 0; i < SEG; i++) {
+    const k = vid(i, ring) * 3;
+    _c.x += pos[k];
+    _c.y += pos[k + 1];
+    _c.z += pos[k + 2];
+  }
+  _c.divideScalar(SEG);
+  // The ring's plane: cross products of spokes a quarter turn apart, summed all round.
+  _n.set(0, 0, 0);
+  const q = SEG / 4;
+  for (let i = 0; i < SEG; i += 4) {
+    const ka = vid(i, ring) * 3;
+    const kb = vid((i + q) % SEG, ring) * 3;
+    _a.set(pos[ka] - _c.x, pos[ka + 1] - _c.y, pos[ka + 2] - _c.z);
+    _b.set(pos[kb] - _c.x, pos[kb + 1] - _c.y, pos[kb + 2] - _c.z);
+    _n.add(_a.cross(_b));
+  }
+  if (_n.lengthSq() < 1e-8 || _n.y <= 0) _n.set(0, 1, 0);
+  _y.copy(_n).normalize();
+  _z.set(0, 0, 1).addScaledVector(_y, -_y.z).normalize();
+  _x.crossVectors(_y, _z);
+  _m.makeBasis(_x, _y, _z);
+  seat.quaternion.setFromRotationMatrix(_m);
+  seat.position.copy(_c);
+  let r = 0;
+  for (let i = 0; i < SEG; i += 4) {
+    const k = vid(i, ring) * 3;
+    r += Math.hypot(pos[k] - _c.x, pos[k + 1] - _c.y, pos[k + 2] - _c.z);
+  }
+  return r / (SEG / 4);
 }

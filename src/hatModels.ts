@@ -610,3 +610,40 @@ export function buildHat(id: string): HatModel | null {
 }
 
 export const HAT_MODEL_IDS = Object.keys(BUILDERS);
+
+/**
+ * How each hat is worn. `fit` is the radius of the part that touches the head, in the model's own units;
+ * `r` is how wide that opening is on the squishy (its body is about 1 across the middle), so the hat sinks
+ * onto the head until its rim meets the surface there. `sy` squashes it to the bun's flat top (headphones).
+ */
+export interface HatFit {
+  fit: number;
+  r: number;
+  sy?: number;
+}
+
+const FITS: Record<string, HatFit> = {
+  party: { fit: 0.25, r: 0.42 },
+  bow: { fit: 0.27, r: 0.46 },
+  strawberry: { fit: 0.3, r: 0.54 },
+  chef: { fit: 0.27, r: 0.5 },
+  sunHat: { fit: 0.26, r: 0.5 },
+  flowerCrown: { fit: 0.3, r: 0.6 },
+  propeller: { fit: 0.26, r: 0.52 },
+  captain: { fit: 0.26, r: 0.5 },
+  sailor: { fit: 0.27, r: 0.5 },
+  pirate: { fit: 0.27, r: 0.5 },
+  nightcap: { fit: 0.27, r: 0.52 },
+  bunny: { fit: 0.17, r: 0.36 },
+  beanie: { fit: 0.28, r: 0.58 },
+  crown: { fit: 0.25, r: 0.42 },
+  topHat: { fit: 0.2, r: 0.36 },
+  frog: { fit: 0.3, r: 0.6 },
+  witch: { fit: 0.25, r: 0.44 },
+  pumpkin: { fit: 0.28, r: 0.55 },
+  beret: { fit: 0.245, r: 0.5 },
+  ballCap: { fit: 0.27, r: 0.52 },
+  headphones: { fit: 0.31, r: 0.74, sy: 0.55 },
+};
+
+export const hatFit = (id: string): HatFit => FITS[id] ?? { fit: 0.26, r: 0.5 };

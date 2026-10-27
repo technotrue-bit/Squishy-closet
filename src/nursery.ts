@@ -1,16 +1,20 @@
 // The babies you see. A baby found asleep at a place snoozes there until you
 // tap it; babies you keep come everywhere with you and toddle about in front,
 // beside the one you hold. They're little squishies, so they use the same body
-// as everyone else, just smaller.
+// as everyone else, just smaller, and they get a little bigger as they grow up.
+// When one wants something, a thought bubble over its head shows what.
 
 import * as THREE from "three";
 import { Squishy, type Bounds, type Fx } from "./squishy";
 import type { SquishyDef } from "./catalog";
 import type { PlaceScene } from "./placeScenes";
 import { moodById, type MoodId } from "./personality";
+import { pushOut } from "./nav";
 import * as sfx from "./audio";
 
 export const BABY_SCALE = 0.44;
+/** Nearly grown up, a baby is this much bigger than when it was found. */
+const GROWN_EXTRA = 0.4;
 /** Where kept babies toddle about: in front, either side of the one you hold. */
 const NEST = [new THREE.Vector3(-1.75, 0, 0.55), new THREE.Vector3(1.75, 0, 0.55), new THREE.Vector3(-0.95, 0, 1.45)];
 
@@ -25,6 +29,41 @@ interface Little {
   nest: THREE.Vector3;
   next: number;
   appear: number;
+  /** Its size now, from how grown up it is. */
+  size: number;
+  /** The thought bubble showing what it wants, if it wants something. */
+  bubble: THREE.Sprite | null;
+  wantIcon: string | null;
+}
+
+/** One picture per thing wanted: a white thought bubble with the icon inside. */
+const bubbleTex = new Map<string, THREE.CanvasTexture>();
+function bubbleTexture(icon: string): THREE.CanvasTexture {
+  let t = bubbleTex.get(icon);
+  if (t) return t;
+  const c = document.createElement("canvas");
+  c.width = c.height = 128;
+  const g = c.getContext("2d")!;
+  g.fillStyle = "#fff";
+  g.strokeStyle = "#ffb3d1";
+  g.lineWidth = 5;
+  const dot = (x: number, y: number, r: number) => {
+    g.beginPath();
+    g.arc(x, y, r, 0, Math.PI * 2);
+    g.fill();
+    g.stroke();
+  };
+  dot(40, 118, 6);
+  dot(52, 102, 9);
+  dot(64, 54, 44);
+  g.font = "52px system-ui, 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif";
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.fillText(icon, 64, 58);
+  t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  bubbleTex.set(icon, t);
+  return t;
 }
 
 export type NurseryHit = { kind: "sleeper" } | { kind: "baby"; key: string };
@@ -58,10 +97,11 @@ export class Nursery {
     const shadow = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 2.2), this.shadowMat.clone());
     shadow.rotation.x = -Math.PI / 2;
     this.scene.add(shadow);
-    return { key, sq, shadow, nest: at.clone(), next: 2 + Math.random() * 4, appear: 0.001 };
+    return { key, sq, shadow, nest: at.clone(), next: 2 + Math.random() * 4, appear: 0.001, size: BABY_SCALE, bubble: null, wantIcon: null };
   }
 
   private drop(l: Little): void {
+    this.showWant(l, null);
     this.scene.remove(l.sq.group, l.shadow);
     l.shadow.geometry.dispose();
     (l.shadow.material as THREE.Material).dispose();
@@ -69,6 +109,11 @@ export class Nursery {
 
   get hasSleeper(): boolean {
     return !!this.sleeper;
+  }
+
+  /** Where the sleeping baby lies, if there is one. */
+  get sleeperAt(): THREE.Vector3 | null {
+    return this.sleeper?.sq.home ?? null;
   }
 
   get sleeperKind(): string | null {
@@ -83,6 +128,8 @@ export class Nursery {
     const near = place.wander.filter((w) => Math.abs(w.x) > 1 && Math.sign(w.x) === side);
     const w = near.length ? near[Math.floor(Math.random() * near.length)] : new THREE.Vector3(side * 2, 0, -2.8);
     const spot = new THREE.Vector3(side * Math.min(Math.abs(w.x) + 0.5, 2.3), 0, Math.min(-1.9, w.z + 0.7));
+    // Not inside anything, nor tucked against the one you hold.
+    pushOut(spot, [...place.solids, { x: 0, z: 0, r: 1.0 }], 0.45);
     const l = this.make(def, "sleeper", spot);
     l.sq.nap();
     l.sq.faceNow(-spot.x * 0.08);
@@ -113,7 +160,7 @@ export class Nursery {
   }
 
   /** Makes the babies you see match the ones you're raising. */
-  setBabies(list: { key: string; def: SquishyDef; mood: MoodId; napping: boolean }[]): void {
+  setBabies(list: { key: string; def: SquishyDef; mood: MoodId; napping: boolean; want: string | null; grow: number }[]): void {
     const keep = new Map(this.babies.map((b) => [b.key, b]));
     const next: Little[] = [];
     list.forEach((b, i) => {
@@ -122,7 +169,9 @@ export class Nursery {
       else l = this.make(b.def, b.key, NEST[i % NEST.length]);
       l.nest = NEST[i % NEST.length].clone();
       l.sq.mood = moodById(b.mood);
+      l.size = BABY_SCALE * (1 + GROWN_EXTRA * Math.max(0, Math.min(1, b.grow)));
       if (b.napping) l.sq.nap();
+      this.showWant(l, b.napping ? null : b.want);
       next.push(l);
     });
     for (const l of keep.values()) {
@@ -148,9 +197,48 @@ export class Nursery {
     else l.sq.wakeUp();
   }
 
+  /** Shows (or, with null, hides) the thought bubble of what a baby wants. */
+  setWant(key: string, icon: string | null): void {
+    const l = this.babies.find((b) => b.key === key);
+    if (!l) return;
+    const fresh = icon && icon !== l.wantIcon;
+    this.showWant(l, icon);
+    if (fresh) {
+      l.sq.wakeUp();
+      l.sq.bounce(3.2);
+      l.sq.express("happy", 0.9, 0.7);
+      l.sq.yawTarget = 0;
+      sfx.squeak(l.sq.pitch * 1.4, 0.09, 0.16);
+    }
+  }
+
+  private showWant(l: Little, icon: string | null): void {
+    if (icon === l.wantIcon) return;
+    l.wantIcon = icon;
+    if (!icon) {
+      if (l.bubble) {
+        this.scene.remove(l.bubble);
+        l.bubble.material.dispose();
+        l.bubble = null;
+      }
+      return;
+    }
+    if (!l.bubble) {
+      l.bubble = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: false }));
+      l.bubble.renderOrder = 10;
+      l.bubble.scale.setScalar(0.001);
+      this.scene.add(l.bubble);
+    }
+    l.bubble.material.map = bubbleTexture(icon);
+    l.bubble.material.needsUpdate = true;
+  }
+
   hit(ray: THREE.Raycaster): NurseryHit | null {
     if (this.sleeper && ray.intersectObject(this.sleeper.sq.mesh, false).length) return { kind: "sleeper" };
-    for (const b of this.babies) if (ray.intersectObject(b.sq.mesh, false).length) return { kind: "baby", key: b.key };
+    for (const b of this.babies) {
+      if (ray.intersectObject(b.sq.mesh, false).length) return { kind: "baby", key: b.key };
+      if (b.bubble?.visible && ray.intersectObject(b.bubble, false).length) return { kind: "baby", key: b.key };
+    }
     return null;
   }
 
@@ -192,6 +280,19 @@ export class Nursery {
     if (tired) setTimeout(() => sq.nap(), 1600);
   }
 
+  /** A wish came true: a big happy wiggle, and it grows a little right there. */
+  wished(key: string, mood: MoodId, grow: number): void {
+    const l = this.babies.find((b) => b.key === key);
+    if (!l) return;
+    this.showWant(l, null);
+    l.size = BABY_SCALE * (1 + GROWN_EXTRA * Math.max(0, Math.min(1, grow)));
+    l.appear = 0.35;
+    this.learned(key, mood, false);
+    l.sq.express("love", 1.4, 0.9);
+    this.ev.fx("heart", l.sq.topPoint(), 4);
+    this.ev.fx("sparkle", l.sq.topPoint(), 10);
+  }
+
   update(dt: number, now: number, bounds: Bounds): void {
     this.now = now;
     this.frame++;
@@ -200,7 +301,9 @@ export class Nursery {
       const sq = l.sq;
       if (l.appear > 0 && l.appear < 1) {
         l.appear = Math.min(1, l.appear + dt * 3);
-        sq.group.scale.setScalar(BABY_SCALE * (l.appear + Math.sin(l.appear * Math.PI) * 0.25));
+        sq.group.scale.setScalar(l.size * (l.appear + Math.sin(l.appear * Math.PI) * 0.25));
+      } else if (l.appear >= 1 && Math.abs(sq.group.scale.x - l.size) > 1e-4) {
+        sq.group.scale.setScalar(sq.group.scale.x + (l.size - sq.group.scale.x) * Math.min(1, dt * 4));
       }
       if (l !== this.sleeper && !this.paused && sq.isHome && !sq.isSleeping) {
         l.next -= dt;
@@ -223,8 +326,17 @@ export class Nursery {
       sq.update(dt, now, bounds, (this.frame + i) % 2 === 0);
       const p = sq.group.position;
       l.shadow.position.set(p.x, 0.006, p.z);
-      l.shadow.scale.setScalar(BABY_SCALE * 0.95);
+      l.shadow.scale.setScalar(sq.group.scale.x * 0.95);
       l.shadow.visible = sq.group.visible;
+      if (l.bubble) {
+        // Pops in, then bobs gently over its head.
+        const top = sq.topPoint();
+        const want = 0.62 * (sq.isSleeping ? 0 : 1);
+        const s = l.bubble.scale.x + (want - l.bubble.scale.x) * Math.min(1, dt * 8);
+        l.bubble.scale.setScalar(Math.max(0.001, s));
+        l.bubble.position.set(top.x + 0.22, top.y + 0.38 + Math.sin(now * 2.6 + i) * 0.05, top.z + 0.05);
+        l.bubble.visible = sq.group.visible && s > 0.05;
+      }
     });
   }
 
@@ -232,6 +344,7 @@ export class Nursery {
     for (const l of this.sleeper ? [...this.babies, this.sleeper] : this.babies) {
       l.sq.group.visible = on;
       l.shadow.visible = on;
+      if (l.bubble) l.bubble.visible = on;
     }
   }
 }
