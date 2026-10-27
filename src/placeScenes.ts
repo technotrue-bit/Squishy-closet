@@ -4,7 +4,7 @@
 // Your squishy sits in front; its own box sits at the back of every place.
 
 import * as THREE from "three";
-import { canvasTex } from "./scene";
+import { canvasTex, HOME_BOX_SCALE, LID_R, LID_REST, STEAMER_R } from "./scene";
 import { placeById, type JobDef, type PlaceId } from "./places";
 import { boxSolids, pushOut, type Solid } from "./nav";
 
@@ -252,7 +252,7 @@ function buildTable(): PlaceScene {
     solids: [
       ...macColors.map((_, i) => ({ x: -4.6 + i * 1.1, z: -7.5, r: 0.56 })),
       { x: 4.2, z: -7.2, r: 1.15 },
-      { x: -2.9, z: -3.1, r: 0.45 },
+      { x: -2.9, z: -3.1, r: 0.64 },
       { x: -2.15, z: -3.35, r: 0.22 },
       ...boxSolids(2.85, -3.3, 1.1, 0.8),
       { x: 0.95, z: -4.9, r: 0.14 },
@@ -530,7 +530,8 @@ function buildBeach(): PlaceScene {
       (p2.userData.top as THREE.Group).rotation.z = Math.sin(t * 1.3 + 1) * 0.05;
       // The crab walks sideways back and forth.
       const cx = Math.sin(t * 0.25) * 3.5;
-      crab.position.set(cx - 1, 0, -5.9 + Math.sin(t * 0.5) * 0.15);
+      // Down at the water's edge, out of everyone's way.
+      crab.position.set(cx - 1, 0, -7.25 + Math.sin(t * 0.5) * 0.1);
       crab.rotation.z = Math.sin(t * 14) * 0.08;
       void dt;
     },
@@ -575,7 +576,8 @@ function buildBoat(): PlaceScene {
   const deck = add(g, deckGeo, std("#ffffff", { map: plankTex, roughness: 0.8, side: THREE.DoubleSide }));
   deck.position.y = 0;
   // Hull sides and the rail around the edge.
-  const edge = hull.getSpacedPoints(80).map((p) => new THREE.Vector3(p.x, 0, -p.y));
+  // (The deck shape's y becomes z, so the rail follows the deck's own edge.)
+  const edge = hull.getSpacedPoints(80).map((p) => new THREE.Vector3(p.x, 0, p.y));
   const hullPath = new THREE.CatmullRomCurve3(edge.slice(0, -1), true);
   const side = add(g, new THREE.TubeGeometry(hullPath, 120, 0.12, 8, true), std("#ffffff", { roughness: 0.4 }), 0, 0.35, 0);
   void side;
@@ -588,6 +590,24 @@ function buildBoat(): PlaceScene {
     if (p.z > 4.5) continue;
     add(g, postGeo, postMat, p.x, 0.6, p.z);
   }
+  // The rail is solid: big circles just outside it, their inner edge on the rail, so nobody walks through it.
+  const railSolids: { x: number; z: number; r: number }[] = [];
+  for (let i = 0; i < 34; i++) {
+    const p = hullPath.getPoint(i / 34);
+    if (p.z > 4.5) continue;
+    const t = hullPath.getTangent(i / 34);
+    // Outward is away from the deck's middle line.
+    let nx = -t.z;
+    let nz = t.x;
+    if (nx * p.x + nz * (p.z + 3) < 0) {
+      nx = -nx;
+      nz = -nz;
+    }
+    const R = 1.4;
+    railSolids.push({ x: p.x + nx * (R - 0.12), z: p.z + nz * (R - 0.12), r: R });
+  }
+  // The life ring hangs on the inside of the rail.
+  railSolids.push({ x: -4.45, z: 0.6, r: 0.6 });
   const hullSide = add(g, new THREE.CylinderGeometry(1, 1, 1, 8), std("#ff7fb0"));
   hullSide.visible = false;
   // A far island and a lighthouse.
@@ -773,11 +793,12 @@ function buildBoat(): PlaceScene {
     box: { at: V(1.0, -3.2), yaw: -0.25 },
     solids: [
       { x: 0, z: -5.6, r: 0.18 },
-      { x: -2.95, z: -3.1, r: 0.3 },
+      { x: -2.9, z: -3.0, r: 0.62 },
       { x: 3.2, z: -3.0, r: 0.12 },
-      { x: 0.7, z: -8.0, r: 0.2 },
+      { x: 0.7, z: -8.1, r: 0.45 },
       { x: -2.3, z: -5.6, r: 0.27 },
-      { x: -1.0, z: -5.6, r: 0.26 },
+      { x: -1.2, z: -5.6, r: 0.48 },
+      ...railSolids,
     ],
     paths: [
       { how: "swim", from: V(-11, -14.5), to: V(11, -14.5), water: -0.9 },
@@ -1299,10 +1320,12 @@ function buildCity(): PlaceScene {
       ...[[-6.2, -4.8], [6.0, -4.8], [-9.5, -11], [-3.5, -11], [3, -11], [9, -11]].map(([x, z]) => ({ x, z, r: 0.42 })),
       { x: -8, z: -5.0, r: 0.1 },
       { x: 8, z: -5.0, r: 0.1 },
-      ...boxSolids(2.95, -3.15, 1.4, 0.9),
+      ...boxSolids(2.95, -3.2, 1.5, 1.2),
       ...boxSolids(-2.45, -5.15, 2.3, 0.5),
       ...boxSolids(3.5, -4.95, 1.6, 0.55),
-      { x: -2.85, z: -2.45, r: 0.5 },
+      { x: -2.85, z: -2.45, r: 0.76 },
+      { x: 3.2, z: -2.6, r: 0.35 },
+      { x: -6.0, z: -6.6, r: 0.9 },
     ],
     paths: [
       { how: "walk", from: V(-10, -10.6), to: V(10, -10.6) },
@@ -1322,10 +1345,61 @@ function buildCity(): PlaceScene {
 
 const BUILD: Record<PlaceId, () => PlaceScene> = { table: buildTable, beach: buildBeach, boat: buildBoat, room: buildRoom, city: buildCity };
 
-/** How far a friend's body reaches out from its middle along the ground, for not bumping into things. */
-export const FRIEND_PAD = 0.7;
-/** Your squishy's own box, at the back of every place. */
-export const HOME_BOX_R = 0.85;
+/**
+ * How far a friend's body reaches out from its middle along the ground, for not bumping into things.
+ * Measured in game: about 0.78 sitting, up to 0.95 squashed on landing from a hop, so a little more.
+ */
+export const FRIEND_PAD = 1.0;
+
+/**
+ * Your squishy's own box at the back of every place: the steamer, and its lid leaning open behind it,
+ * worked out from the model itself so nobody hops into either.
+ */
+export function homeBoxSolids(at: THREE.Vector3, yaw: number): Solid[] {
+  const k = HOME_BOX_SCALE;
+  const out: Solid[] = [{ x: at.x, z: at.z, r: STEAMER_R * k + 0.03 }];
+  // The lid's rim and thickness, as the box holds it, then turned and moved like the box.
+  const m = new THREE.Matrix4().compose(LID_REST.pos, new THREE.Quaternion().setFromEuler(LID_REST.rot), new THREE.Vector3(1, 1, 1));
+  const box = new THREE.Matrix4().compose(at, new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw), new THREE.Vector3(k, k, k));
+  m.premultiply(box);
+  const v = new THREE.Vector3();
+  const pts: { x: number; z: number }[] = [];
+  for (let i = 0; i < 48; i++) {
+    const a = (i / 48) * Math.PI * 2;
+    for (const y of [-0.12, 0.2]) {
+      v.set(Math.cos(a) * LID_R, y, Math.sin(a) * LID_R).applyMatrix4(m);
+      pts.push({ x: v.x, z: v.z });
+    }
+  }
+  // Cover the lid's footprint with a row of circles along its long side.
+  const cx = pts.reduce((n, p) => n + p.x, 0) / pts.length;
+  const cz = pts.reduce((n, p) => n + p.z, 0) / pts.length;
+  let ax = 0;
+  let az = 0;
+  for (const p of pts) {
+    const dx = p.x - cx;
+    const dz = p.z - cz;
+    if (dx * dx + dz * dz > ax * ax + az * az) {
+      ax = dx;
+      az = dz;
+    }
+  }
+  const len = Math.hypot(ax, az) || 1;
+  const ux = ax / len;
+  const uz = az / len;
+  let along = 0;
+  let across = 0;
+  for (const p of pts) {
+    along = Math.max(along, Math.abs((p.x - cx) * ux + (p.z - cz) * uz));
+    across = Math.max(across, Math.abs(-(p.x - cx) * uz + (p.z - cz) * ux));
+  }
+  const n = Math.max(1, Math.ceil(along / Math.max(0.15, across)));
+  for (let i = 0; i < n; i++) {
+    const t = n > 1 ? -along + across + (i / (n - 1)) * 2 * (along - across) : 0;
+    out.push({ x: cx + ux * t, z: cz + uz * t, r: Math.hypot(across, n > 1 ? (along - across) / (n - 1) : 0) + 0.03 });
+  }
+  return out;
+}
 
 /** Places are built the first time you go there, then kept. */
 const cache = new Map<PlaceId, PlaceScene>();
@@ -1334,7 +1408,7 @@ export function placeScene(id: PlaceId): PlaceScene {
   if (!p) {
     p = BUILD[id]();
     // Your squishy's box is solid too, and nobody stands or rests inside anything.
-    p.solids.push({ x: p.box.at.x, z: p.box.at.z, r: HOME_BOX_R });
+    p.solids.push(...homeBoxSolids(p.box.at, p.box.yaw));
     for (const spot of p.spots) pushOut(spot.at, p.solids, FRIEND_PAD);
     for (const w of p.wander) pushOut(w, p.solids, FRIEND_PAD);
     for (const s of p.spots) s.show(0, false, 0, 0);

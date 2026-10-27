@@ -129,7 +129,7 @@ export class Nursery {
     const w = near.length ? near[Math.floor(Math.random() * near.length)] : new THREE.Vector3(side * 2, 0, -2.8);
     const spot = new THREE.Vector3(side * Math.min(Math.abs(w.x) + 0.5, 2.3), 0, Math.min(-1.9, w.z + 0.7));
     // Not inside anything, nor tucked against the one you hold.
-    pushOut(spot, [...place.solids, { x: 0, z: 0, r: 1.0 }], 0.45);
+    pushOut(spot, [...place.solids, { x: 0, z: 0, r: 1.2 }], 0.6);
     const l = this.make(def, "sleeper", spot);
     l.sq.nap();
     l.sq.faceNow(-spot.x * 0.08);

@@ -265,9 +265,9 @@ const nursery = new Nursery(stage.scene, stage.shadowMat, squishy, {
 });
 // Friends hop around the one you hold, and around a baby asleep where they play.
 crew.blockers = () => {
-  const out = [{ x: squishy.home.x, z: squishy.home.z, r: 1.0 }];
+  const out = [{ x: squishy.home.x, z: squishy.home.z, r: 1.2 }];
   const sl = nursery.sleeperAt;
-  if (sl) out.push({ x: sl.x, z: sl.z, r: 0.5 });
+  if (sl) out.push({ x: sl.x, z: sl.z, r: 0.6 });
   return out;
 };
 

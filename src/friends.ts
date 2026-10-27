@@ -509,6 +509,11 @@ export class Crew {
     const from = f.sq.isHome ? f.sq.home : f.sq.group.position;
     const way = route(from, target, solids, FRIEND_PAD).map((p) => new THREE.Vector3(p.x, target.y, p.z));
     const trip = ++f.trip;
+    // Nowhere to go without bumping into something: it stays put and carries on from here.
+    if (!way.length) {
+      then();
+      return;
+    }
     const next = (i: number) => {
       if (f.trip !== trip) return;
       if (i === way.length - 1) f.sq.hopTo(way[i], { then: () => f.trip === trip && then() });

@@ -94,6 +94,11 @@ export interface Stage {
 
 /** Where the lid leans at rest, and where it sits when closed on the basket. */
 export const LID_REST = { pos: new THREE.Vector3(-0.55, 1.15, -1.55), rot: new THREE.Euler(-1.2, 0, 0.12) };
+/** Your squishy's own box is a steamer this much smaller than the big one. */
+export const HOME_BOX_SCALE = 0.62;
+/** The steamer's outer radius, and its lid's. */
+export const STEAMER_R = 1.2;
+export const LID_R = 1.2;
 export const LID_CLOSED = { pos: new THREE.Vector3(0, 0.4, 0), rot: new THREE.Euler(0, 0, 0) };
 
 export function buildStage(renderer?: THREE.WebGLRenderer): Stage {
@@ -141,7 +146,7 @@ export function buildStage(renderer?: THREE.WebGLRenderer): Stage {
   blanket.scale.set(1.15, 0.22, 0.7);
   blanket.position.set(-0.05, BASKET_FLOOR, 0.35);
   homeBox.add(pillow, blanket);
-  homeBox.scale.setScalar(0.62);
+  homeBox.scale.setScalar(HOME_BOX_SCALE);
   const homeShadow = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 3.4), shadowMat);
   homeShadow.rotation.x = -Math.PI / 2;
   homeShadow.position.y = 0.006;

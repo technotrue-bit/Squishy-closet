@@ -82,6 +82,7 @@ const inside = (p: Pt, s: Solid, pad: number) => Math.hypot(p.x - s.x, p.z - s.z
 /**
  * The way from `from` to `to` around the solids: the corners to hop to, ending at `to` (not including
  * `from`). A thing the squishy is already standing in is ignored, so it can always step out.
+ * Empty when there is no way round at all (it never goes through).
  */
 export function route(from: Pt, to: Pt, solids: readonly Solid[], pad: number): Pt[] {
   const skip = new Set(solids.filter((s) => inside(from, s, pad) || inside(to, s, pad)));
@@ -118,7 +119,7 @@ export function route(from: Pt, to: Pt, solids: readonly Solid[], pad: number): 
       }
     }
   }
-  if (prev[1] < 0) return [{ x: to.x, z: to.z }];
+  if (prev[1] < 0) return [];
   const path: Pt[] = [];
   for (let v = 1; v > 0; v = prev[v]) path.push(nodes[v]);
   return path.reverse();

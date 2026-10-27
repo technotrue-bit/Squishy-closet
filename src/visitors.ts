@@ -48,7 +48,8 @@ export function pickVisitor(pool: readonly SquishyDef[], date: Date, rand: () =>
 }
 const SWIM_SPEED = 1.15;
 /** How far a passer-by's body reaches out along the ground. */
-const VISITOR_PAD = 0.55;
+/** A passer-by's body along the ground (they are smaller than friends), with a little room to spare. */
+const VISITOR_PAD = 0.8;
 
 export interface VisitorEvents {
   fx(kind: Fx, at: THREE.Vector3, count?: number): void;
@@ -150,16 +151,19 @@ export class Visitors {
     const flip = Math.random() < 0.5;
     const from = (flip ? path.to : path.from).clone();
     const to = (flip ? path.from : path.to).clone();
+    if (path.how !== "swim") {
+      pushOut(from, p.solids, VISITOR_PAD);
+      pushOut(to, p.solids, VISITOR_PAD);
+    }
+    const way = path.how === "swim" ? [to] : route(from, to, p.solids, VISITOR_PAD).map((q) => new THREE.Vector3(q.x, 0, q.z));
+    // No way through without bumping into something: nobody passes by this time.
+    if (!way.length) return;
     const busy = new Set([...this.ev.busy(), ...this.list.map((v) => v.sq.def.id)]);
     const pool = CATALOG.filter((d) => !busy.has(d.id) && d.foundBy.some((f) => f.kind === "box"));
     const def = pickVisitor(pool, new Date(), Math.random) ?? CATALOG[0];
     const sq = this.body(def);
     sq.group.scale.setScalar(0.001);
-    if (path.how !== "swim") {
-      pushOut(from, p.solids, VISITOR_PAD);
-      pushOut(to, p.solids, VISITOR_PAD);
-    }
-    const pts = [from, ...(path.how === "swim" ? [to] : route(from, to, p.solids, VISITOR_PAD).map((q) => new THREE.Vector3(q.x, 0, q.z)))];
+    const pts = [from, ...way];
     let len = 0;
     for (let i = 1; i < pts.length; i++) len += pts[i].distanceTo(pts[i - 1]);
     sq.placeAt(this.spot(path, from, 0));
