@@ -5,6 +5,7 @@
 
 import { BABIES_MAX, COOKIES_MAX } from "./babies";
 import { LOVE_PER_BOX, parseSave, type Save } from "./save";
+import { isSite } from "./site";
 
 /** Starts every code, so a pasted link or a bare code both work and nothing else is mistaken for one. */
 const DEFLATED = "a1";
@@ -103,7 +104,7 @@ export function moveLink(code: string, here: { origin: string; pathname: string 
   if (framed) {
     try {
       const site = new URL(referrer).origin;
-      if (/^https:\/\/(www\.)?trueaigaming\.com$/.test(site) || /^https:\/\/trueaigaming-[a-z0-9-]+-true-team2\.vercel\.app$/.test(site)) {
+      if (isSite(site)) {
         return `${site}/play.html?id=squishy-closet${HASH}${code}`;
       }
     } catch {
