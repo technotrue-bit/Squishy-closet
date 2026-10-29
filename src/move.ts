@@ -32,7 +32,11 @@ async function pipe(bytes: Uint8Array, stream: CompressionStream | Decompression
 
 /** The save as a code. Older browsers without CompressionStream make a longer, plain one. */
 export async function encodeSave(s: Save): Promise<string> {
-  const json = new TextEncoder().encode(JSON.stringify(s));
+  // Which gift links came here only matters on this phone; a waiting gift travels, so it isn't lost.
+  const { giftsGot, giftsSent, inbox, ...rest } = s;
+  void giftsGot;
+  void giftsSent;
+  const json = new TextEncoder().encode(JSON.stringify(inbox.length ? { ...rest, inbox } : rest));
   if (typeof CompressionStream === "function") return DEFLATED + toBase64Url(await pipe(json, new CompressionStream("deflate-raw")));
   return PLAIN + toBase64Url(json);
 }
@@ -87,6 +91,9 @@ export function combineSaves(mine: Save, other: Save): { save: Save; added: numb
   s.stars = Math.max(s.stars, other.stars);
   s.cookies = Math.min(COOKIES_MAX, Math.max(s.cookies, other.cookies));
   for (const [place, n] of Object.entries(other.jobs)) s.jobs[place] = Math.max(s.jobs[place] ?? 0, n);
+  for (const g of other.inbox) if (!s.inbox.some((x) => x.key === g.key)) s.inbox.push({ ...g });
+  s.giftsGot = union(s.giftsGot, other.giftsGot);
+  s.giftsSent = union(s.giftsSent, other.giftsSent);
   for (const b of other.babies) if (s.babies.length < BABIES_MAX && !s.babies.some((x) => x.key === b.key)) s.babies.push(structuredClone(b));
   if (!s.active && other.active) {
     s.active = other.active;

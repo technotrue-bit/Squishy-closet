@@ -6,9 +6,10 @@ import { hatById } from "./hats";
 import { PLACE_IDS, type PlaceId } from "./places";
 import { catalogMood, isMood, type MoodId } from "./personality";
 import { BABIES_MAX, cleanBaby, COOKIES_MAX, growLeft, moodOf, type Baby } from "./babies";
+import { cleanGift, INBOX_MAX, type Gift } from "./gift";
 
 export const SAVE_KEY = "squishycloset.save";
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 /** Squishies out at once: the one you hold and up to three friends. */
 export const TEAM_MAX = 3;
 export const ZOOM_MIN = 0.85;
@@ -61,6 +62,12 @@ export interface Save {
   cookies: number;
   /** Babies you're raising. */
   babies: Baby[];
+  /** Squishy mail from friends, waiting to be opened. */
+  inbox: Gift[];
+  /** Keys of gifts that came to this phone, so a link opened twice gives once. */
+  giftsGot: string[];
+  /** Keys of gifts made on this phone. */
+  giftsSent: string[];
 }
 
 export const freshSave = (): Save => ({
@@ -81,6 +88,9 @@ export const freshSave = (): Save => ({
   seen: [],
   cookies: 1,
   babies: [],
+  inbox: [],
+  giftsGot: [],
+  giftsSent: [],
 });
 
 const strings = (a: unknown): string[] => (Array.isArray(a) ? a.filter((t): t is string => typeof t === "string") : []);
@@ -137,6 +147,13 @@ export function parseSave(raw: string | null): Save {
     const baby = cleanBaby(b, (id) => !!defById(id), cleanName);
     if (baby && out.babies.length < BABIES_MAX && !out.babies.some((o) => o.key === baby.key)) out.babies.push(baby);
   }
+  const inbox = Array.isArray(s.inbox) ? s.inbox : [];
+  for (const g of inbox) {
+    const gift = cleanGift(g);
+    if (gift && out.inbox.length < INBOX_MAX && !out.inbox.some((x) => x.key === gift.key)) out.inbox.push(gift);
+  }
+  out.giftsGot = [...new Set(strings(s.giftsGot))].slice(-300);
+  out.giftsSent = [...new Set(strings(s.giftsSent))].slice(-300);
   if (s.v === 2) {
     // New in this update: friends play together, so bring the newest ones out.
     out.team = Object.keys(out.owned)
