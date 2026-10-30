@@ -29,7 +29,7 @@ class Spring {
   }
 }
 
-export type Fx = "heart" | "sparkle" | "star" | "zz" | "note" | "glimmer" | "splash";
+export type Fx = "heart" | "sparkle" | "star" | "zz" | "note" | "glimmer" | "splash" | "bat" | "smoke" | "candy" | "bubble";
 
 export interface Bounds {
   minX: number;

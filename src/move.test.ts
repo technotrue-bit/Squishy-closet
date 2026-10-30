@@ -24,8 +24,19 @@ describe("move to a new phone", () => {
   it("round trips a full collection through a code", async () => {
     const s = fullSave();
     const code = await encodeSave(s);
-    expect(code.startsWith("a1")).toBe(true);
+    expect(code.startsWith("a2")).toBe(true);
     expect(await decodeSave(code)).toEqual(s);
+  });
+
+  it("still reads codes made before squishies were packed as rows", async () => {
+    const s = fullSave();
+    const { giftsGot, giftsSent, inbox, ...rest } = s;
+    void [giftsGot, giftsSent, inbox];
+    const deflated = new Response(new Blob([JSON.stringify(rest)]).stream().pipeThrough(new CompressionStream("deflate-raw")));
+    const bytes = new Uint8Array(await deflated.arrayBuffer());
+    const old = "a1" + btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    expect(findCode(`#move=${old}`)).toBe(old);
+    expect(await decodeSave(old)).toEqual(s);
   });
 
   it("makes a link short enough for one QR code a phone camera can read", async () => {

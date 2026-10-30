@@ -1,8 +1,8 @@
 // Everything drawn over the 3D view: the island title, the love meter, the
 // shelf of squishies (who is out playing and who is resting), the buttons, the
-// squishy cards, the Squishy Book, hats, places, settings, the tutorial hand
-// and little toasts. Big, round, picture-first buttons for small hands; a 4
-// year old can play without reading.
+// squishy cards, the Squishy Book, hats, places, settings, bath time, the
+// Spooky Box button, the tutorial hand and little toasts. Big, round,
+// picture-first buttons for small hands; a 4 year old can play without reading.
 
 import { CATALOG, FAMILIES, FINISH_NAME, type SquishyDef } from "./catalog";
 import { feelWord } from "./feel";
@@ -262,6 +262,33 @@ const CSS = `
 .ui .picks img { width: 84px; height: 84px; display: block; }
 .ui .toast { position: absolute; z-index: 4; top: calc(env(safe-area-inset-top) + 28%); left: 50%; transform: translate(-50%, -50%) scale(0.7); opacity: 0; width: max-content; max-width: min(84vw, 340px); box-sizing: border-box; padding: 8px 16px; border-radius: 18px; background: rgba(255,255,255,0.88); box-shadow: 0 3px 0 rgba(200,110,150,0.3), 0 8px 20px rgba(160,60,110,0.15); font-weight: 900; font-size: 17px; line-height: 1.2; color: #e2508c; text-align: center; text-wrap: balance; transition: opacity 0.25s, transform 0.35s cubic-bezier(.3,1.7,.5,1); }
 .ui .toast.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+.ui .float-btn { position: absolute; bottom: calc(env(safe-area-inset-bottom) + 190px); width: 64px; display: none; flex-direction: column; align-items: center; gap: 2px; background: none; font-weight: 900; font-size: 12.5px; text-shadow: 0 1px 0 rgba(255,255,255,0.8); }
+.ui .float-btn.on { display: flex; }
+.ui .float-btn .ico { width: 56px; height: 56px; border-radius: 28px; display: grid; place-items: center; position: relative; }
+.ui .float-btn .ico svg { width: 40px; height: 40px; }
+.ui .float-btn:active .ico { transform: translateY(2px); }
+.ui .bath-btn { right: 8px; }
+.ui .bath-btn .ico { background: linear-gradient(180deg, #bff0ff, #6fcff5); box-shadow: 0 4px 0 #2a9ac4; }
+.ui .spooky-btn { left: 8px; }
+.ui .spooky-btn .ico { background: linear-gradient(180deg, #ffc37a, #ff8a1f); box-shadow: 0 4px 0 #c25a0a; }
+.ui .spooky-btn.ready .ico { animation: wiggle 1.2s ease-in-out infinite; box-shadow: 0 4px 0 #c25a0a, 0 0 18px 4px rgba(255,170,60,0.75); }
+.ui .spooky-btn.soon .ico { background: linear-gradient(180deg, #d8c2ff, #8a5cf0); box-shadow: 0 4px 0 #5a3aa8; }
+.ui .spooky-btn .badge { position: absolute; top: -6px; right: -6px; min-width: 24px; height: 24px; padding: 0 6px; box-sizing: border-box; border-radius: 12px; background: #8a5cf0; color: #fff; font-size: 15px; font-weight: 900; display: grid; place-items: center; box-shadow: 0 2px 0 #5a3aa8; }
+.ui.framed .bath .bath-top { top: calc(env(safe-area-inset-top) + 58px); }
+.ui .bath .bath-top { position: absolute; left: 50%; top: calc(env(safe-area-inset-top) + 12px); transform: translateX(-50%); width: min(80vw, 360px); box-sizing: border-box; padding: 10px 14px 12px; border-radius: 24px; background: rgba(255,255,255,0.9); box-shadow: 0 4px 0 rgba(90,170,220,0.35); text-align: center; }
+.ui .bath .steps { display: flex; justify-content: center; gap: 8px; margin-bottom: 4px; }
+.ui .bath .steps i { font-style: normal; width: 36px; height: 36px; border-radius: 18px; display: grid; place-items: center; font-size: 20px; background: #eef8ff; filter: grayscale(0.8) opacity(0.6); transition: transform 0.25s, filter 0.25s; }
+.ui .bath .steps i.on { filter: none; background: #bff0ff; transform: scale(1.2); box-shadow: 0 0 0 3px #6fcff5; }
+.ui .bath .steps i.done { filter: none; background: #d6f7dd; }
+.ui .bath .bath-title { font-size: 24px; font-weight: 900; color: #2a86c4; line-height: 1.1; }
+.ui .bath .bath-how { font-size: 15px; font-weight: 800; color: #4f8fb8; margin-top: 2px; }
+.ui .bath .bath-bar { height: 12px; border-radius: 6px; background: #e1f3fc; overflow: hidden; margin-top: 8px; }
+.ui .bath .bath-bar i { display: block; height: 100%; width: 0%; border-radius: 6px; background: linear-gradient(90deg, #8fdcff, #4fb3f0); transition: width 0.2s; }
+.ui .bath .bath-x { position: absolute; top: calc(env(safe-area-inset-top) + 12px); right: 12px; }
+.ui.framed .bath .bath-x { top: calc(env(safe-area-inset-top) + 64px); }
+.ui.bath-on .gear { display: none; }
+.ui .card .special { margin: 2px auto 0; display: inline-block; padding: 4px 12px; border-radius: 999px; background: linear-gradient(180deg, #ffc37a, #ff8a1f); color: #fff; font-weight: 900; font-size: 15px; box-shadow: 0 3px 0 #c25a0a; }
+.ui .book .note { margin: -4px 16px 8px; font-weight: 800; font-size: 13px; color: #c25a0a; }
 @media (max-height: 700px) { .ui .hint { font-size: 20px; padding: 8px 16px; } .ui .hint small { font-size: 13px; } .ui .skip { top: calc(env(safe-area-inset-top) + 186px); } }
 @media (max-width: 350px) { .ui .nav button { width: 56px; font-size: 11px; } .ui .nav .ico { width: 46px; height: 46px; } .ui .nav .open .ico { width: 56px; height: 56px; } }
 @media (max-height: 600px) { .ui .shelf { height: 70px; } .ui .shelf img { width: 60px; height: 60px; } .ui .shelf button { width: 60px; height: 62px; } .ui .card img { width: 140px; height: 140px; } }
@@ -278,6 +305,8 @@ const HAT = `<svg viewBox="0 0 40 40"><path d="M8 29c0-8 5-17 12-17s12 9 12 17z"
 const PLACE = `<svg viewBox="0 0 40 40"><path d="M4 27c5-3 9 3 16 0s11 3 16 0v7H4z" fill="#fff"/><path d="M20 6v18" stroke="#fff6e0" stroke-width="2.5"/><path d="M21 7l10 15H21z" fill="#fff"/><path d="M19 10l-8 12h8z" fill="#ffe0ec"/><path d="M10 24h20l-3 4H13z" fill="#ffd27a"/></svg>`;
 const GEAR = `<svg width="28" height="28" viewBox="0 0 28 28"><path d="M14 4l2 .3.7 2.4 2 1 2.3-1 1.6 1.6-1 2.3 1 2 2.4.7v2.3l-2.4.7-1 2 1 2.3-1.6 1.6-2.3-1-2 1-.7 2.4h-2.3l-.7-2.4-2-1-2.3 1L6.4 21l1-2.3-1-2L4 16v-2.3l2.4-.7 1-2-1-2.3L8 7.1l2.3 1 2-1L13 4.3z" fill="#e2508c"/><circle cx="14" cy="14.8" r="4" fill="#fff"/></svg>`;
 const JOBS = `<svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="19" rx="4" fill="#8fdcff"/><rect x="8" y="1.5" width="8" height="4" rx="2" fill="#2a86c4"/><path d="M8 13l3 3 5-6" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const TUB = `<svg viewBox="0 0 40 40"><circle cx="13" cy="9" r="4" fill="#fff" opacity=".9"/><circle cx="20" cy="6" r="2.5" fill="#fff" opacity=".8"/><circle cx="26" cy="11" r="3" fill="#fff" opacity=".85"/><path d="M4 19h32c0 8-5 12-16 12S4 27 4 19z" fill="#fff"/><path d="M4 19h32" stroke="#ffc6df" stroke-width="3" stroke-linecap="round"/><circle cx="14" cy="19" r="4" fill="#fff"/><circle cx="21" cy="17" r="5" fill="#fff"/><circle cx="28" cy="19" r="3.5" fill="#fff"/><path d="M10 31l-2 4M30 31l2 4" stroke="#ffd27a" stroke-width="3" stroke-linecap="round"/></svg>`;
+const PUMPKIN = `<svg viewBox="0 0 40 40"><path d="M20 9c1-4 3-5 6-5" stroke="#4f7a2a" stroke-width="3" fill="none" stroke-linecap="round"/><ellipse cx="13" cy="23" rx="9" ry="12" fill="#ffb347"/><ellipse cx="27" cy="23" rx="9" ry="12" fill="#ffb347"/><ellipse cx="20" cy="23" rx="9" ry="12.5" fill="#ffc870"/><path d="M12 19l4-5 4 5zM20 19l4-5 4 5z" fill="#7a3a0a"/><path d="M11 25q9 9 18 0q-9 4-18 0z" fill="#7a3a0a"/></svg>`;
 const HOUSE = `<svg viewBox="0 0 20 20"><path d="M3 10l7-6 7 6v7H3z" fill="#9a72e0"/><rect x="8" y="12" width="4" height="5" rx="1" fill="#fff"/></svg>`;
 /** Little pictures of each place for the place picker. */
 const PLACE_PICS: Record<PlaceId, string> = {
@@ -294,7 +323,7 @@ const CLOSE = `<svg width="24" height="24" viewBox="0 0 24 24"><path d="M6 6l12 
 /** A pointing hand, finger tip at the top left. */
 const HAND = `<svg viewBox="0 0 64 64"><path d="M22 6c3 0 5 2 5 5v17l3-1c2-1 5 0 6 2 2-1 5 0 6 2 2-1 6 0 6 3v12c0 9-6 15-15 15h-3c-6 0-10-3-13-8l-8-13c-1-2 0-5 3-5 2 0 3 1 4 2l2 3V11c0-3 2-5 4-5z" fill="#fff" stroke="#5a2a4a" stroke-width="3" stroke-linejoin="round"/><path d="M30 29v8M36 31v7M42 33v6" stroke="#5a2a4a" stroke-width="2.5" stroke-linecap="round"/></svg>`;
 
-export type Screen = "title" | "closet" | "box";
+export type Screen = "title" | "closet" | "box" | "bath";
 export type ShelfState = "held" | "out" | "rest" | "baby";
 export type HandMove = "press" | "pet" | "tickle" | "toss" | "tap" | "hug";
 
@@ -339,6 +368,12 @@ export interface UiHandlers {
   openMail(): void;
   /** A squishy link pasted into the Book: what to tell the kid. */
   receive(text: string): string;
+  /** Bath time for the one you hold. */
+  openBath(): void;
+  /** Closed the bath before it was done. */
+  closeBath(): void;
+  /** The Spooky Box button. */
+  openSpooky(): void;
 }
 
 export interface BabyInfo {
@@ -380,6 +415,15 @@ export interface CardInfo {
   /** The hat it came wearing, when that hat is new to you. */
   cameWith?: string;
 }
+
+/** Where a new hat came from, on its card. */
+const HAT_FROM: Record<HatDef["from"], string> = {
+  gift: "A present for you!",
+  place: "Your friends found it!",
+  box: "It came in the box!",
+  spooky: "It came in the Spooky Box!",
+  bath: "For bath time!",
+};
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
@@ -439,8 +483,19 @@ export class Ui {
           <button class="places-btn"><span class="ico">${PLACE}</span>Places</button>
           <button class="island-btn"><span class="ico">${ISLAND}</span>Island</button>
         </div>
+        <button class="float-btn spooky-btn"><span class="ico">${PUMPKIN}<span class="badge">0</span></span><span class="lbl">Spooky</span></button>
+        <button class="float-btn bath-btn"><span class="ico">${TUB}</span>Bath</button>
       </div>
       <div class="layer box"></div>
+      <div class="layer bath">
+        <button class="round bath-x" aria-label="Close">${CLOSE}</button>
+        <div class="bath-top">
+          <div class="steps"><i>🛁</i><i>🧼</i><i>🚿</i><i>💨</i></div>
+          <div class="bath-title"></div>
+          <div class="bath-how"></div>
+          <div class="bath-bar"><i></i></div>
+        </div>
+      </div>
       <div class="hint"></div>
       <button class="skip">Skip</button>
       <div class="hand">${HAND}</div>
@@ -451,7 +506,7 @@ export class Ui {
       <div class="toast"></div>`;
     document.body.appendChild(this.root);
     const q = <T extends Element = HTMLElement>(sel: string) => this.root.querySelector(sel) as unknown as T;
-    this.layers = { title: q(".title"), closet: q(".closet"), box: q(".layer.box") };
+    this.layers = { title: q(".title"), closet: q(".closet"), box: q(".layer.box"), bath: q(".layer.bath") };
     this.fill = q(".fill");
     this.heart = q(".heart");
     this.starCount = q(".stars span");
@@ -471,6 +526,9 @@ export class Ui {
     this.hatsDot = q(".hats-btn .dot");
     this.mailDot = q(".book-btn .dot");
     q(".hats-btn").addEventListener("click", () => this.hatsSheet());
+    q(".bath-btn").addEventListener("click", () => h.openBath());
+    q(".spooky-btn").addEventListener("click", () => h.openSpooky());
+    q(".bath-x").addEventListener("click", () => h.closeBath());
     q(".places-btn").addEventListener("click", () => this.placesSheet());
     this.sheetEl.addEventListener("click", (e) => {
       if (e.target === this.sheetEl) this.closeSheet();
@@ -501,6 +559,48 @@ export class Ui {
 
   show(screen: Screen): void {
     for (const [k, el] of Object.entries(this.layers)) el.classList.toggle("on", k === screen);
+    this.root.classList.toggle("bath-on", screen === "bath");
+  }
+
+  /** The title says Happy Halloween all October. */
+  halloween(on: boolean): void {
+    this.root.querySelector(".title .logo small")!.textContent = on ? "Happy Halloween!" : "Squishy Island";
+  }
+
+  /** Bath time can start once the tutorial is done. */
+  setBathReady(on: boolean): void {
+    this.root.querySelector(".bath-btn")!.classList.toggle("on", on);
+  }
+
+  /**
+   * The Spooky Box button: glowing with a count while there are Spooky Boxes to open, a purple countdown in the
+   * sleeps before Halloween, and hidden otherwise.
+   */
+  setSpooky(boxes: number, sleeps: number): void {
+    const b = this.root.querySelector(".spooky-btn")!;
+    b.classList.toggle("on", boxes > 0 || sleeps > 0);
+    b.classList.toggle("ready", boxes > 0);
+    b.classList.toggle("soon", boxes === 0 && sleeps > 0);
+    const badge = b.querySelector<HTMLElement>(".badge")!;
+    badge.textContent = String(boxes);
+    badge.style.display = boxes > 0 ? "grid" : "none";
+    b.querySelector(".lbl")!.textContent = boxes > 0 ? "Spooky" : `${sleeps} sleep${sleeps === 1 ? "" : "s"}`;
+  }
+
+  /** Bath time: which step (from 0), with big words and a few small ones. */
+  bathStep(i: number, title: string, how: string): void {
+    const el = this.layers.bath;
+    el.querySelectorAll(".steps i").forEach((d, k) => {
+      d.classList.toggle("on", k === i);
+      d.classList.toggle("done", k < i);
+    });
+    el.querySelector(".bath-title")!.textContent = title;
+    el.querySelector(".bath-how")!.textContent = how;
+    this.bathProgress(0);
+  }
+
+  bathProgress(k: number): void {
+    (this.layers.bath.querySelector(".bath-bar i") as HTMLElement).style.width = `${Math.round(Math.max(0, Math.min(1, k)) * 100)}%`;
   }
 
   get busy(): boolean {
@@ -648,7 +748,10 @@ export class Ui {
           void b.offsetWidth;
           b.classList.add("wobble");
           const h = HATS.find((x) => x.id === id)!;
-          this.toast(h.from === "box" ? "Find it in a box!" : "Friends find it doing jobs!", 1500);
+          this.toast(
+            h.from === "box" ? "Find it in a box!" : h.from === "spooky" ? "Find it in a Spooky Box on Halloween! 🎃" : h.from === "bath" ? "Give a squishy a bath!" : "Friends find it doing jobs!",
+            1700,
+          );
           return;
         }
         this.h.wearHat(id);
@@ -872,7 +975,7 @@ export class Ui {
         <div class="new">New hat!</div>
         <img alt="">
         <div class="name"><input readonly value="${esc(name)}" aria-label="Hat"></div>
-        <div class="kind">Your friends found it!</div>
+        <div class="kind">${HAT_FROM[HATS.find((h) => h.id === id)?.from ?? "place"]}</div>
         <div class="btns" style="margin-top:14px"><button class="big alt later">Later</button><button class="big wear">Wear it!</button></div>
       </div>`;
     this.thumbs.wantHat(id, (url) => (this.modal.querySelector("img")!.src = url));
@@ -1274,6 +1377,7 @@ export class Ui {
         <div class="no">#${def.no}</div>
         ${info.grew ? `<div class="grew">All grown up!</div>` : info.isNew ? `<div class="new">New!</div>` : ""}
         ${info.arrived ? `<div class="arrived">Your squishy has arrived!</div>` : ""}
+        ${def.family === "halloween" ? `<div class="special">🎃 Halloween Special</div>` : ""}
         <img alt="">
         <div class="name"><input maxlength="${NAME_MAX}" enterkeyhint="done" aria-label="Name"><span class="pen">${PEN}</span></div>
         <div class="kind">${esc(def.design)} · ${esc(kind)}</div>
@@ -1342,7 +1446,9 @@ export class Ui {
     for (const fam of FAMILIES) {
       const defs = CATALOG.filter((d) => d.family === fam.id);
       const got = defs.filter((d) => owned[d.id]).length;
-      html += `<h2>${esc(fam.name)} <span>${got}/${defs.length}</span></h2><div class="grid">`;
+      html += `<h2>${esc(fam.name)} <span>${got}/${defs.length}</span></h2>`;
+      if (fam.id === "halloween") html += `<div class="note">🎃 Only in Spooky Boxes, which come on Halloween!</div>`;
+      html += `<div class="grid">`;
       for (const d of defs) html += `<button class="cell${owned[d.id] ? "" : " missing"}" data-id="${d.id}"><b>${d.no}</b><img alt=""></button>`;
       html += `</div>`;
     }

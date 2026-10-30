@@ -7,9 +7,10 @@ import { PLACE_IDS, type PlaceId } from "./places";
 import { catalogMood, isMood, type MoodId } from "./personality";
 import { BABIES_MAX, cleanBaby, COOKIES_MAX, growLeft, moodOf, type Baby } from "./babies";
 import { cleanGift, INBOX_MAX, type Gift } from "./gift";
+import { isHalloween } from "./season";
 
 export const SAVE_KEY = "squishycloset.save";
-export const SAVE_VERSION = 5;
+export const SAVE_VERSION = 6;
 /** Squishies out at once: the one you hold and up to three friends. */
 export const TEAM_MAX = 3;
 export const ZOOM_MIN = 0.85;
@@ -68,6 +69,12 @@ export interface Save {
   giftsGot: string[];
   /** Keys of gifts made on this phone. */
   giftsSent: string[];
+  /** Spooky Boxes earned on Halloween and not opened yet. */
+  spookyBoxes: number;
+  /** The year Halloween's own Spooky Box was given, 0 before the first. */
+  spookyYear: number;
+  /** Baths given. */
+  baths: number;
 }
 
 export const freshSave = (): Save => ({
@@ -91,6 +98,9 @@ export const freshSave = (): Save => ({
   inbox: [],
   giftsGot: [],
   giftsSent: [],
+  spookyBoxes: 0,
+  spookyYear: 0,
+  baths: 0,
 });
 
 const strings = (a: unknown): string[] => (Array.isArray(a) ? a.filter((t): t is string => typeof t === "string") : []);
@@ -154,6 +164,9 @@ export function parseSave(raw: string | null): Save {
   }
   out.giftsGot = [...new Set(strings(s.giftsGot))].slice(-300);
   out.giftsSent = [...new Set(strings(s.giftsSent))].slice(-300);
+  out.spookyBoxes = Math.min(99, count(s.spookyBoxes));
+  out.spookyYear = count(s.spookyYear);
+  out.baths = count(s.baths);
   if (s.v === 2) {
     // New in this update: friends play together, so bring the newest ones out.
     out.team = Object.keys(out.owned)
@@ -202,6 +215,23 @@ export function collect(s: Save, id: string, now: number, mood: MoodId): { isNew
   }
   s.owned[id] = { got: now, mood };
   return { isNew: true, stars: 0 };
+}
+
+/** Halloween's own Spooky Box, once a year on Halloween. True when it was just given. */
+export function halloweenBox(s: Save, d: Date): boolean {
+  if (!isHalloween(d) || s.spookyYear === d.getFullYear()) return false;
+  s.spookyYear = d.getFullYear();
+  s.spookyBoxes = Math.min(99, s.spookyBoxes + 1);
+  return true;
+}
+
+/** Boxes just earned with love come as Spooky Boxes on Halloween. Returns how many did. */
+export function spookyFromLove(s: Save, earned: number, d: Date): number {
+  if (!isHalloween(d) || earned <= 0) return 0;
+  const n = Math.min(earned, s.boxes);
+  s.boxes -= n;
+  s.spookyBoxes = Math.min(99, s.spookyBoxes + n);
+  return n;
 }
 
 export function addCookie(s: Save, n = 1): boolean {
