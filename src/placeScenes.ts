@@ -17,6 +17,13 @@ export interface JobSpot {
   show(k: number, working: boolean, t: number, dt: number): void;
 }
 
+export interface Roam {
+  minX: number;
+  maxX: number;
+  minZ: number;
+  maxZ: number;
+}
+
 export interface VisitPath {
   how: "swim" | "walk" | "hop";
   from: THREE.Vector3;
@@ -35,6 +42,11 @@ export interface PlaceScene {
   spots: JobSpot[];
   /** Spots to wander to and rest at. */
   wander: THREE.Vector3[];
+  /**
+   * The open ground friends may roam over when the screen is wide (a phone on its side), behind the basket:
+   * the middles of their bodies stay inside it, so nobody walks into the sea or the wall.
+   */
+  roam: Roam;
   /** Where your squishy's own box sits, at the back. */
   box: { at: THREE.Vector3; yaw: number };
   /** Ways other squishies pass by: swimming in the sea, walking or hopping along. */
@@ -248,6 +260,8 @@ function buildTable(): PlaceScene {
     light: ["#fff4fb", "#ffcfb8"],
     spots,
     wander: [V(-1.4, -3.8), V(2.6, -4.8), V(-2.8, -5.2), V(0, -6.2), V(-0.7, -2.2)],
+    // The tablecloth reaches far either side; the big sweets sit at the back.
+    roam: { minX: -9, maxX: 9, minZ: -6.6, maxZ: -2 },
     box: { at: V(1.1, -3.4), yaw: -0.25 },
     solids: [
       ...macColors.map((_, i) => ({ x: -4.6 + i * 1.1, z: -7.5, r: 0.56 })),
@@ -505,6 +519,8 @@ function buildBeach(): PlaceScene {
     light: ["#f4fbff", "#ffe2b0"],
     spots,
     wander: [V(0.3, -3.0), V(1.2, -4.0), V(-2.9, -4.8), V(-1.0, -5.6), V(2.0, -5.6)],
+    // Sand all along, up to the wet edge where the waves come in.
+    roam: { minX: -12, maxX: 12, minZ: -5.6, maxZ: -2 },
     box: { at: V(-1.2, -3.9), yaw: 0.25 },
     solids: [
       { x: -4.4, z: -5.4, r: 0.3 },
@@ -790,6 +806,8 @@ function buildBoat(): PlaceScene {
     light: ["#f2faff", "#d8f0ff"],
     spots,
     wander: [V(-0.6, -3.4), V(1.4, -4.4), V(-2.6, -6.8), V(2.0, -6.6), V(0.4, -9.0)],
+    // Only the deck inside the rail: the boat is narrow, so this barely grows.
+    roam: { minX: -2.6, maxX: 2.6, minZ: -6.4, maxZ: -2.2 },
     box: { at: V(1.0, -3.2), yaw: -0.25 },
     solids: [
       { x: 0, z: -5.6, r: 0.18 },
@@ -1030,6 +1048,8 @@ function buildRoom(): PlaceScene {
     light: ["#fff6ee", "#e9c49a"],
     spots,
     wander: [V(0.4, -3.0), V(-1.6, -5.4), V(0.6, -5.6), V(-2.9, -4.6), V(2.0, -3.6)],
+    // The whole rug-and-floor, in front of the back wall.
+    roam: { minX: -11, maxX: 11, minZ: -6.8, maxZ: -2 },
     box: { at: V(-1.1, -3.6), yaw: 0.25 },
     solids: [
       ...boxSolids(-1.2, -7.1, 4.2, 1.2),
@@ -1315,6 +1335,8 @@ function buildCity(): PlaceScene {
     light: ["#f8f6ff", "#ffe0ec"],
     spots,
     wander: [V(0.6, -2.7), V(1.2, -4.4), V(-1.5, -3.2), V(-0.2, -2.2), V(1.8, -1.2)],
+    // The plaza, short of the road.
+    roam: { minX: -12, maxX: 12, minZ: -5.2, maxZ: -1.8 },
     box: { at: V(-0.55, -4.2), yaw: 0.2 },
     solids: [
       ...[[-6.2, -4.8], [6.0, -4.8], [-9.5, -11], [-3.5, -11], [3, -11], [9, -11]].map(([x, z]) => ({ x, z, r: 0.42 })),

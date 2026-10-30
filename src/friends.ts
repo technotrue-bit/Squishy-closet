@@ -11,6 +11,7 @@ import type { JobDef } from "./places";
 import { FRIEND_PAD, type JobSpot, type PlaceScene } from "./placeScenes";
 import { pushOut, route, type Solid } from "./nav";
 import * as sfx from "./audio";
+import type { GroundView } from "./view";
 import { moodById, sayLine, type MoodId } from "./personality";
 
 export const FRIEND_SCALE = 0.8;
@@ -43,6 +44,8 @@ export interface Friend {
   appear: number;
   /** Counts its trips, so the rest of an old trip is dropped when it sets off somewhere new. */
   trip: number;
+  /** Where its trip ends, while it's on the way. */
+  dest: THREE.Vector3 | null;
 }
 
 export interface CrewEvents {
@@ -97,6 +100,8 @@ export class Crew {
   paused = false;
   /** Things in the way besides the place's own: the one you hold, a sleeping baby. */
   blockers: () => Solid[] = () => [];
+  /** What the screen shows, so friends wander where you can see them. */
+  private view: GroundView | null = null;
 
   constructor(
     private scene: THREE.Scene,
@@ -161,7 +166,7 @@ export class Crew {
     bubble.scale.setScalar(0.7);
     bubble.visible = false;
     this.scene.add(bubble);
-    return { id: "", sq, shadow, bubble, bubbleKey: "", state: { kind: "idle", until: 0 }, front: false, appear: 0, trip: 0 };
+    return { id: "", sq, shadow, bubble, bubbleKey: "", state: { kind: "idle", until: 0 }, front: false, appear: 0, trip: 0, dest: null };
   }
 
   private removeFriend(f: Friend): void {
@@ -182,6 +187,7 @@ export class Crew {
     f.sq.wakeUp();
     f.front = false;
     f.trip++;
+    f.dest = null;
     f.state = { kind: "idle", until: this.now + 1 + Math.random() * 2 };
   }
 
@@ -455,7 +461,9 @@ export class Crew {
     const p = this.place!;
     // Personality tips the odds: hard workers pick jobs, chatty ones find a pal.
     const m = f.sq.mood;
-    const work = 0.62 * m.work;
+    // On a wide screen there's more to explore, so a little less time at jobs.
+    const wide = !!this.view?.wide;
+    const work = 0.62 * m.work * (wide ? 0.7 : 1);
     const chat = 0.18 * m.chat;
     const r = Math.random() * Math.max(1, work + chat + 0.2);
     if (m.id === "sleepy" && Math.random() < 0.15) {
@@ -487,14 +495,85 @@ export class Crew {
       this.goTo(pal, mid.clone().add(dir), () => (pal.state = b));
       return;
     }
-    const spot = p.wander[Math.floor(Math.random() * p.wander.length)];
+    const spot = wide && Math.random() < 0.75 ? (this.roamSpot(f, 0.08) ?? this.wanderSpot()) : this.wanderSpot();
     this.goTo(f, spot, () => {
       f.sq.yawTarget = (Math.random() - 0.5) * 0.8;
       f.state = { kind: "idle", until: this.now + 2.5 + Math.random() * 3 };
     });
   }
 
-  private goTo(f: Friend, at: THREE.Vector3, then: () => void): void {
+  /** One of the place's own spots to wander to, one you can see if there is one. */
+  private wanderSpot(): THREE.Vector3 {
+    const all = this.place!.wander;
+    const seen = this.view ? all.filter((w) => this.view!.inset(w) > 0.12) : all;
+    const from = seen.length ? seen : all;
+    return from[Math.floor(Math.random() * from.length)];
+  }
+
+  /**
+   * Somewhere open on the ground you can see, at least `inset` in from the sides of the screen, roomy
+   * away from the others; `side` (-1 left, 1 right) picks a side of the screen when it can.
+   */
+  private roamSpot(f: Friend, inset: number, side = 0): THREE.Vector3 | null {
+    const p = this.place;
+    const v = this.view;
+    if (!p || !v) return null;
+    const r = p.roam;
+    const solids = [...p.solids, ...this.blockers()];
+    const others = this.friends.filter((o) => o !== f).map((o) => o.dest ?? o.sq.home);
+    let best: THREE.Vector3 | null = null;
+    let bestScore = -Infinity;
+    for (let i = 0; i < 14; i++) {
+      const at = new THREE.Vector3(r.minX + Math.random() * (r.maxX - r.minX), 0, r.minZ + Math.random() * (r.maxZ - r.minZ));
+      pushOut(at, solids, FRIEND_PAD);
+      if (at.x < r.minX || at.x > r.maxX || at.z < r.minZ || at.z > r.maxZ) continue;
+      if (v.inset(at) < inset) continue;
+      // Room around it, a bit of randomness so it isn't always the same far corner.
+      let room = 6;
+      for (const o of others) room = Math.min(room, Math.hypot(o.x - at.x, o.z - at.z));
+      const score = room + Math.random() * 1.5 - (side && Math.sign(at.x) !== side ? 4 : 0);
+      if (score > bestScore) {
+        bestScore = score;
+        best = at;
+      }
+    }
+    return best;
+  }
+
+  /**
+   * The screen changed shape (the phone turned): anyone now off to the side comes hopping back into view,
+   * from the side it was on, and nobody sets off for somewhere you can't see.
+   */
+  reframe(view: GroundView): void {
+    this.view = view;
+    if (!this.place) return;
+    for (const f of this.friends) {
+      // Up front beside the basket is always in view; a job spot is the same in both ways up.
+      if (f.front || f.state.kind === "work") continue;
+      const at = f.sq.group.position;
+      const dest = f.dest ?? f.sq.home;
+      if (view.inset(at) > 0.04 && view.inset(dest) > 0.04) continue;
+      const side = Math.sign(at.x) || 1;
+      this.release(f);
+      // Far past the edge: it comes back from just outside, so it's in view again in a moment.
+      if (view.inset(at) < 0) {
+        const ex = view.edgeX(at.z, side);
+        if (Math.abs(at.x) > Math.abs(ex)) f.sq.placeAt(new THREE.Vector3(ex, 0, at.z));
+      }
+      const to = this.roamSpot(f, 0.22, side) ?? this.wanderSpot();
+      this.goTo(
+        f,
+        to,
+        () => {
+          f.sq.yawTarget = (Math.random() - 0.5) * 0.8;
+          f.state = { kind: "idle", until: this.now + 1.5 + Math.random() * 2 };
+        },
+        1.25,
+      );
+    }
+  }
+
+  private goTo(f: Friend, at: THREE.Vector3, then: () => void, stride?: number): void {
     f.state = { kind: "move" };
     // Don't land right on top of another friend, or inside anything.
     const target = at.clone();
@@ -514,10 +593,16 @@ export class Crew {
       then();
       return;
     }
+    f.dest = target;
+    const done = () => {
+      if (f.trip !== trip) return;
+      f.dest = null;
+      then();
+    };
     const next = (i: number) => {
       if (f.trip !== trip) return;
-      if (i === way.length - 1) f.sq.hopTo(way[i], { then: () => f.trip === trip && then() });
-      else f.sq.hopTo(way[i], { then: () => next(i + 1) });
+      if (i === way.length - 1) f.sq.hopTo(way[i], { stride, then: done });
+      else f.sq.hopTo(way[i], { stride, then: () => next(i + 1) });
     };
     next(0);
   }
