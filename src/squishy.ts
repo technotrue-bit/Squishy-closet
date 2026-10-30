@@ -403,7 +403,8 @@ export class Squishy {
   // ---- things friends do by themselves ------------------------------------
 
   /** Hops over to a spot, a few hops at a time, turning to face the way it goes. */
-  hopTo(target: THREE.Vector3, opts: { height?: number; then?: () => void } = {}): void {
+  /** Hops over to `target`; `stride` is how far each hop goes (longer hops get there sooner). */
+  hopTo(target: THREE.Vector3, opts: { height?: number; stride?: number; then?: () => void } = {}): void {
     if (this.mode === "fly" || this.mode === "dizzy") return;
     const from = this.mode === "home" ? this.home : this.group.position;
     const dx = target.x - from.x;
@@ -411,7 +412,7 @@ export class Squishy {
     const dist = Math.hypot(dx, dz);
     this.returnFrom.copy(this.group.position);
     this.home.copy(target);
-    this.retHops = Math.max(1, Math.round(dist / 0.85));
+    this.retHops = Math.max(1, Math.round(dist / (opts.stride ?? 0.85)));
     this.retTime = 0.42;
     this.retHeight = opts.height ?? 0.4;
     this.retQuiet = true;

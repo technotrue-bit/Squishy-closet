@@ -37,7 +37,7 @@ import {
 } from "./save";
 import * as sfx from "./audio";
 import { BOTTOM_Y } from "./bao";
-import { fitCamera, flyBounds, swayCamera } from "./view";
+import { fitCamera, flyBounds, swayCamera, groundView } from "./view";
 import { placeScene } from "./placeScenes";
 import { hatsEarned, placeById, type PlaceId } from "./places";
 import { boxHat, hatById } from "./hats";
@@ -1186,6 +1186,8 @@ function fit(): void {
   stage.setViewDistance(base.pos.distanceTo(base.target));
   worldPerPx = flyBounds(camera, h, bounds);
   island.fit(w, h);
+  // On its side there's room to roam; turned back upright, anyone off the edge hops back into view.
+  crew.reframe(groundView(camera));
 }
 window.addEventListener("resize", fit);
 
