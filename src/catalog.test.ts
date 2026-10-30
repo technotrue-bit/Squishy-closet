@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CATALOG, defById } from "./catalog";
-import { isOctober, openBox, weightOf } from "./boxes";
+import { isOctober, openBox, openSpookyBox, weightOf } from "./boxes";
 
 const seq = (vals: number[]) => {
   let i = 0;
@@ -8,13 +8,23 @@ const seq = (vals: number[]) => {
 };
 
 describe("catalog", () => {
-  it("has the 30 Bao and 36 Spooky squishies, numbered 1..66 with unique ids and names", () => {
+  it("has the 30 Bao, 36 Spooky and 6 Halloween Special squishies, numbered 1..72 with unique ids and names", () => {
     expect(CATALOG.filter((d) => d.family === "bao")).toHaveLength(30);
     expect(CATALOG.filter((d) => d.family === "spooky")).toHaveLength(36);
+    expect(CATALOG.filter((d) => d.family === "halloween")).toHaveLength(6);
     expect(CATALOG.map((d) => d.no)).toEqual(CATALOG.map((_, i) => i + 1));
-    expect(new Set(CATALOG.map((d) => d.id)).size).toBe(66);
-    expect(new Set(CATALOG.map((d) => d.name)).size).toBe(66);
+    expect(new Set(CATALOG.map((d) => d.id)).size).toBe(72);
+    expect(new Set(CATALOG.map((d) => d.name)).size).toBe(72);
     expect(defById("bao-rosy-matte")?.name).toBe("Rosy Bao");
+    // The old numbers stay put: Halloween Specials come after everyone else.
+    expect(defById("spooky-cauldron-glow")?.no).toBe(66);
+  });
+
+  it("keeps Halloween Specials for Spooky Boxes only", () => {
+    for (const d of CATALOG.filter((x) => x.family === "halloween")) expect(d.foundBy).toEqual([{ kind: "spookyBox" }]);
+    const all = new Set<string>();
+    for (let i = 0; i < 200; i++) all.add(openBox(new Set(), new Date(2026, 9, 31), () => (i + 0.5) / 200).def.family);
+    expect(all.has("halloween")).toBe(false);
   });
 
   it("every squishy can be found and has a sane feel", () => {
@@ -75,5 +85,32 @@ describe("boxes", () => {
     const gold = defById("bao-gold")!;
     const matte = defById("bao-snow-matte")!;
     expect(weightOf(gold, may)).toBeLessThan(weightOf(matte, may) / 10);
+  });
+});
+
+describe("spooky boxes", () => {
+  const specials = CATALOG.filter((d) => d.family === "halloween").map((d) => d.id);
+
+  it("always has a Halloween Special in the first one", () => {
+    for (const r of [0, 0.3, 0.6, 0.999]) expect(openSpookyBox(new Set(["bao-rosy-matte"]), () => r).def.family).toBe("halloween");
+  });
+
+  it("then holds Spooky squishies or Specials, preferring ones you don't have", () => {
+    const owned = new Set([specials[0]]);
+    const seen = new Set<string>();
+    for (let i = 0; i < 300; i++) {
+      const { def, isNew } = openSpookyBox(owned, () => (i + 0.5) / 300);
+      expect(["spooky", "halloween"]).toContain(def.family);
+      expect(isNew).toBe(true);
+      seen.add(def.family);
+    }
+    expect(seen).toEqual(new Set(["spooky", "halloween"]));
+  });
+
+  it("gives a repeat only when you have every Spooky squishy and Special", () => {
+    const owned = new Set(CATALOG.filter((d) => d.family !== "bao").map((d) => d.id));
+    expect(openSpookyBox(owned, () => 0.5).isNew).toBe(false);
+    owned.delete("spooky-boo-glow");
+    expect(openSpookyBox(owned, () => 0.5).def.id).toBe("spooky-boo-glow");
   });
 });

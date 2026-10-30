@@ -1,5 +1,6 @@
 // Moving a kid's squishies to a new phone, with nothing kept on a server. The whole save is packed into a code
-// (deflated JSON in base64url) that travels inside a link's #fragment: browsers never send the fragment to any
+// (deflated JSON in base64url, each squishy a short row) that travels inside a link's #fragment: browsers never
+// send the fragment to any
 // server, so the save goes straight from one screen to the other, by QR code, share sheet or copy and paste.
 // Bringing squishies in only ever adds: nothing this phone already has is lost.
 
@@ -8,6 +9,8 @@ import { LOVE_PER_BOX, parseSave, type Save } from "./save";
 import { isSite } from "./site";
 
 /** Starts every code, so a pasted link or a bare code both work and nothing else is mistaken for one. */
+const ROWS = "a2";
+/** Older codes: the save as it is, deflated or plain. Still read. */
 const DEFLATED = "a1";
 const PLAIN = "a0";
 /** Longest code accepted, about ten times a full collection. */
@@ -30,20 +33,56 @@ async function pipe(bytes: Uint8Array, stream: CompressionStream | Decompression
   return new Uint8Array(await out.arrayBuffer());
 }
 
+/** A squishy as a row: id, seconds since the one found before it, personality, then name, hat and raised if any. */
+type Row = [string, number, string, ...(string | number)[]];
+
+/**
+ * The collection as rows, oldest first. When each was found is most of a code, and the small gaps between them pack
+ * far smaller than whole times (only their order matters, so seconds are plenty).
+ */
+function toRows(owned: Save["owned"]): Row[] {
+  let last = 0;
+  return Object.entries(owned)
+    .sort((a, b) => a[1].got - b[1].got)
+    .map(([id, o]) => {
+      const sec = Math.floor(o.got / 1000);
+      const row: Row = [id, sec - last, o.mood, o.name ?? "", o.hat ?? "", o.raised ? 1 : 0];
+      last = sec;
+      while (row.length > 3 && !row[row.length - 1]) row.pop();
+      return row;
+    });
+}
+
+function fromRows(rows: unknown): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (!Array.isArray(rows)) return out;
+  let sec = 0;
+  for (const r of rows) {
+    if (!Array.isArray(r) || typeof r[0] !== "string" || typeof r[1] !== "number") continue;
+    sec += r[1];
+    out[r[0]] = { got: sec * 1000, mood: r[2], ...(r[3] ? { name: r[3] } : {}), ...(r[4] ? { hat: r[4] } : {}), ...(r[5] ? { raised: true } : {}) };
+  }
+  return out;
+}
+
 /** The save as a code. Older browsers without CompressionStream make a longer, plain one. */
 export async function encodeSave(s: Save): Promise<string> {
   // Which gift links came here only matters on this phone; a waiting gift travels, so it isn't lost.
   const { giftsGot, giftsSent, inbox, ...rest } = s;
   void giftsGot;
   void giftsSent;
-  const json = new TextEncoder().encode(JSON.stringify(inbox.length ? { ...rest, inbox } : rest));
-  if (typeof CompressionStream === "function") return DEFLATED + toBase64Url(await pipe(json, new CompressionStream("deflate-raw")));
-  return PLAIN + toBase64Url(json);
+  const all = inbox.length ? { ...rest, inbox } : rest;
+  if (typeof CompressionStream === "function") {
+    const { owned, ...others } = all;
+    const json = new TextEncoder().encode(JSON.stringify({ ...others, rows: toRows(owned) }));
+    return ROWS + toBase64Url(await pipe(json, new CompressionStream("deflate-raw")));
+  }
+  return PLAIN + toBase64Url(new TextEncoder().encode(JSON.stringify(all)));
 }
 
 /** Finds the code in a link or in pasted text. */
 export function findCode(text: string): string | null {
-  const m = /(?:^|#move=|\s)(a[01][A-Za-z0-9_-]{8,})/.exec(text.trim());
+  const m = /(?:^|#move=|\s)(a[012][A-Za-z0-9_-]{8,})/.exec(text.trim());
   return m && m[1].length <= MAX_CODE ? m[1] : null;
 }
 
@@ -52,16 +91,22 @@ export async function decodeSave(code: string): Promise<Save | null> {
   try {
     const body = fromBase64Url(code.slice(2));
     let json: Uint8Array;
-    if (code.startsWith(DEFLATED)) {
+    if (code.startsWith(DEFLATED) || code.startsWith(ROWS)) {
       if (typeof DecompressionStream !== "function") return null;
       json = await pipe(body, new DecompressionStream("deflate-raw"));
     } else if (code.startsWith(PLAIN)) json = body;
     else return null;
     if (json.length > MAX_CODE * 20) return null;
-    const text = new TextDecoder().decode(json);
-    const parsed = JSON.parse(text) as unknown;
-    if (typeof parsed !== "object" || parsed === null || !("owned" in parsed)) return null;
-    return parseSave(text);
+    const parsed = JSON.parse(new TextDecoder().decode(json)) as unknown;
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+    const o = parsed as Record<string, unknown>;
+    if (code.startsWith(ROWS)) {
+      if (!("rows" in o)) return null;
+      const { rows, ...rest } = o;
+      return parseSave(JSON.stringify({ ...rest, owned: fromRows(rows) }));
+    }
+    if (!("owned" in o)) return null;
+    return parseSave(JSON.stringify(o));
   } catch {
     return null;
   }
@@ -90,6 +135,9 @@ export function combineSaves(mine: Save, other: Save): { save: Save; added: numb
   s.boxes = Math.max(s.boxes, other.boxes);
   s.stars = Math.max(s.stars, other.stars);
   s.cookies = Math.min(COOKIES_MAX, Math.max(s.cookies, other.cookies));
+  s.spookyBoxes = Math.max(s.spookyBoxes, other.spookyBoxes);
+  s.spookyYear = Math.max(s.spookyYear, other.spookyYear);
+  s.baths = Math.max(s.baths, other.baths);
   for (const [place, n] of Object.entries(other.jobs)) s.jobs[place] = Math.max(s.jobs[place] ?? 0, n);
   for (const g of other.inbox) if (!s.inbox.some((x) => x.key === g.key)) s.inbox.push({ ...g });
   s.giftsGot = union(s.giftsGot, other.giftsGot);

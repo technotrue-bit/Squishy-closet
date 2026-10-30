@@ -580,6 +580,105 @@ function headphones(): HatModel {
   };
 }
 
+/** A headband with a little bat on it, flapping its wings. */
+function batBow(): HatModel {
+  const g = new THREE.Group();
+  const purple = mat("#4a3a6a", { roughness: 0.5 });
+  g.add(mesh(new THREE.TorusGeometry(0.25, 0.028, 8, 36).rotateX(Math.PI / 2), mat("#ff9a3c"), 0, 0.03, 0));
+  const bat = new THREE.Group();
+  const body = mesh(new THREE.SphereGeometry(0.1, 18, 14), purple);
+  body.scale.set(1, 0.9, 0.85);
+  bat.add(body);
+  for (const s of [-1, 1]) {
+    const ear = mesh(new THREE.ConeGeometry(0.035, 0.08, 10), purple, s * 0.05, 0.1, 0);
+    ear.rotation.z = -s * 0.3;
+    bat.add(ear);
+    bat.add(mesh(new THREE.SphereGeometry(0.022, 10, 8), mat("#ffffff", { roughness: 0.3 }), s * 0.037, 0.02, 0.08));
+    bat.add(mesh(new THREE.SphereGeometry(0.011, 8, 6), mat("#1d1428"), s * 0.037, 0.02, 0.1));
+  }
+  // Scalloped wings, hinged at the body.
+  const wingShape = new THREE.Shape();
+  wingShape.moveTo(0, 0.04);
+  wingShape.quadraticCurveTo(0.14, 0.16, 0.3, 0.12);
+  wingShape.quadraticCurveTo(0.26, 0.04, 0.28, -0.02);
+  wingShape.quadraticCurveTo(0.2, 0.0, 0.18, -0.06);
+  wingShape.quadraticCurveTo(0.11, -0.02, 0.08, -0.08);
+  wingShape.quadraticCurveTo(0.04, -0.03, 0, -0.04);
+  wingShape.closePath();
+  const wingGeo = new THREE.ExtrudeGeometry(wingShape, { depth: 0.012, bevelEnabled: false, curveSegments: 8 });
+  const wings: THREE.Group[] = [];
+  for (const s of [-1, 1]) {
+    const hinge = new THREE.Group();
+    const w = mesh(wingGeo, mat("#6b5a8e", { roughness: 0.6, side: THREE.DoubleSide }));
+    w.scale.x = s;
+    hinge.add(w);
+    hinge.position.x = s * 0.06;
+    bat.add(hinge);
+    wings.push(hinge);
+  }
+  bat.position.set(0, 0.13, 0.12);
+  g.add(bat);
+  return {
+    obj: g,
+    animate: (t, c) => {
+      const flap = c.sleeping ? 0.1 : 0.35 + c.energy * 0.5;
+      wings.forEach((w, i) => (w.rotation.y = (i ? -1 : 1) * Math.sin(t * (c.sleeping ? 2 : 9)) * flap));
+      bat.position.y = 0.13 + Math.sin(t * 3) * 0.01;
+    },
+  };
+}
+
+/** A tall candy corn: yellow, orange and a white tip, bending to and fro. */
+function candyCorn(): HatModel {
+  const bands = canvasTex(8, 128, (c) => {
+    c.fillStyle = "#fff8ec";
+    c.fillRect(0, 0, 8, 128);
+    c.fillStyle = "#ff8a1f";
+    c.fillRect(0, 40, 8, 44);
+    c.fillStyle = "#ffd23f";
+    c.fillRect(0, 84, 8, 44);
+  });
+  const g = new THREE.Group();
+  const cone = mesh(new THREE.ConeGeometry(0.2, 0.46, 32, 6), mat("#ffffff", { map: bands, roughness: 0.4, clearcoat: 0.6 }), 0, 0.23, 0);
+  // Round off the tip and the bottom edge a little.
+  const tip = mesh(new THREE.SphereGeometry(0.025, 12, 8), mat("#fff8ec", { roughness: 0.4 }), 0, 0.455, 0);
+  const sway = new THREE.Group();
+  sway.add(cone, tip);
+  g.add(sway);
+  g.add(mesh(new THREE.TorusGeometry(0.2, 0.025, 8, 36).rotateX(Math.PI / 2), mat("#ffd23f", { roughness: 0.4 }), 0, 0.01, 0));
+  return { obj: g, animate: (t, c) => (sway.rotation.z = Math.sin(t * 1.5) * 0.06 + Math.sin(t * 11) * c.energy * 0.12) };
+}
+
+/** A puffy polka-dot shower cap with a frilly edge. */
+function showerCap(): HatModel {
+  const dots = canvasTex(256, 128, (c) => {
+    c.fillStyle = "#9fdcff";
+    c.fillRect(0, 0, 256, 128);
+    c.fillStyle = "#ffffff";
+    for (let y = 12; y < 128; y += 28)
+      for (let x = (y / 28) % 2 ? 16 : 2; x < 256; x += 30) {
+        c.beginPath();
+        c.arc(x, y, 6, 0, Math.PI * 2);
+        c.fill();
+      }
+  });
+  dots.repeat.set(2, 1);
+  const g = new THREE.Group();
+  const puff = mesh(new THREE.SphereGeometry(0.32, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2), mat("#ffffff", { map: dots, roughness: 0.35, clearcoat: 0.7 }));
+  puff.scale.set(1, 0.72, 1);
+  g.add(puff);
+  // The frill: a ring that ripples all the way round.
+  const frill = new THREE.TorusGeometry(0.31, 0.04, 8, 72).rotateX(Math.PI / 2);
+  const p = frill.getAttribute("position") as THREE.BufferAttribute;
+  for (let i = 0; i < p.count; i++) {
+    const a = Math.atan2(p.getZ(i), p.getX(i));
+    p.setY(i, p.getY(i) + Math.sin(a * 18) * 0.018);
+  }
+  frill.computeVertexNormals();
+  g.add(mesh(frill, mat("#ffffff", { roughness: 0.5 }), 0, 0.02, 0));
+  return { obj: g, animate: (t, c) => puff.scale.set(1 + Math.sin(t * 2.4) * 0.015, 0.72 + Math.sin(t * 2.4 + 1) * 0.02 + c.energy * 0.04, 1) };
+}
+
 const BUILDERS: Record<string, () => HatModel> = {
   party,
   bow,
@@ -602,6 +701,9 @@ const BUILDERS: Record<string, () => HatModel> = {
   beret,
   ballCap,
   headphones,
+  batBow,
+  candyCorn,
+  showerCap,
 };
 
 export function buildHat(id: string): HatModel | null {
@@ -644,6 +746,9 @@ const FITS: Record<string, HatFit> = {
   beret: { fit: 0.245, r: 0.5 },
   ballCap: { fit: 0.27, r: 0.52 },
   headphones: { fit: 0.31, r: 0.74, sy: 0.55 },
+  batBow: { fit: 0.25, r: 0.46 },
+  candyCorn: { fit: 0.2, r: 0.38 },
+  showerCap: { fit: 0.32, r: 0.62 },
 };
 
 export const hatFit = (id: string): HatFit => FITS[id] ?? { fit: 0.26, r: 0.5 };

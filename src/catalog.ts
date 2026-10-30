@@ -1,9 +1,10 @@
 // Every squishy in the game, one record each. A squishy is built from its record
 // (body shape, skin, extras, face, finish, feel), so adding a set is just adding
 // records. "foundBy" already has room for the phone app's ways to find them:
-// scanning a real squishy, visiting a place, finishing a mission.
+// scanning a real squishy, visiting a place, finishing a mission. Halloween
+// Specials are only ever in Spooky Boxes, which come on Halloween.
 
-export type Family = "bao" | "spooky";
+export type Family = "bao" | "spooky" | "halloween";
 export type Finish = "matte" | "shiny" | "glitter" | "glow" | "gold";
 export type BodyKind = "bao" | "mochi" | "ghost" | "drop" | "pumpkin";
 export type Personality = "Bouncy" | "Sleepy" | "Shy" | "Silly" | "Brave" | "Sweet";
@@ -24,6 +25,8 @@ export type FaceExtra = "fangs" | "stitch" | "boo" | "nose" | "whiskers";
 
 export type FoundBy =
   | { kind: "box" }
+  /** Only in a Spooky Box. */
+  | { kind: "spookyBox" }
   | { kind: "scan"; code: string }
   | { kind: "place"; place: string }
   | { kind: "mission"; mission: string };
@@ -57,6 +60,7 @@ export interface SquishyDef {
 export const FAMILIES: { id: Family; name: string; place: string }[] = [
   { id: "bao", name: "Bao Buns", place: "Steamer Bay" },
   { id: "spooky", name: "Spooky", place: "Spooky Hollow" },
+  { id: "halloween", name: "Halloween Specials", place: "Spooky Hollow" },
 ];
 
 export const FINISH_NAME: Record<Finish, string> = {
@@ -131,6 +135,16 @@ const SPOOKY: SpookyDesign[] = [
   { key: "spider", name: "Spider Puff", body: "mochi", color: "#2e2838", parts: ["spiderLegs"], ink: LIGHT_INK, blush: "#ff7fb0", sparkle: "#d8c8ff", glow: "#b58cff", soft: 0.85, pitch: 1.3 },
   { key: "moonkitty", name: "Moon Kitty", body: "mochi", color: "#3c3456", parts: ["catEars"], ink: "#ffe27a", face: "whiskers", blush: "#ff8fc0", sparkle: "#fff3b0", glow: "#ffe27a", soft: 0.7, pitch: 1.15 },
   { key: "cauldron", name: "Cauldron Pudding", body: "mochi", color: "#2f2b36", skin: { kind: "top", color: "#8fd14f", rim: "#4a4553" }, ink: LIGHT_INK, blush: "#ff8fb0", sparkle: "#e8ffd0", glow: "#a8ff5a", soft: 0.95, pitch: 0.92 },
+];
+
+// Halloween Specials: one of a kind, each in its own finish. Only in Spooky Boxes.
+const HALLOWEEN: (SpookyDesign & { finish: Finish })[] = [
+  { key: "lantern", name: "Lantern Pumpkin", body: "pumpkin", finish: "glow", color: "#ff8a1f", parts: ["stem"], blush: "#ff5a4a", sparkle: "#fff0c0", glow: "#ffb347", soft: 0.5, pitch: 0.98 },
+  { key: "ghostkitty", name: "Ghost Kitty", body: "ghost", finish: "glow", color: "#f6f2ff", parts: ["catEars"], face: "whiskers", blush: "#ffb3d1", sparkle: "#e8dcff", glow: "#cdb6ff", soft: 0.85, pitch: 1.24 },
+  { key: "batpumpkin", name: "Bat Pumpkin", body: "pumpkin", finish: "glitter", color: "#8a6ad8", parts: ["batWings", "stem"], ink: LIGHT_INK, face: "fangs", blush: "#ff8fc0", sparkle: "#ffd27a", glow: "#c69bff", soft: 0.4, pitch: 1.08 },
+  { key: "witchdrop", name: "Witch Candy Drop", body: "drop", finish: "glow", color: "#d4b8ff", skin: { kind: "bands", colors: ["#b8f06a", "#d4b8ff", "#8a5cf0"] }, parts: ["witchHat"], blush: "#ff8fb0", sparkle: "#f0ffd8", glow: "#c8ff8a", soft: 0.3, pitch: 1.18 },
+  { key: "goldpumpkin", name: "Golden Pumpkin", body: "pumpkin", finish: "gold", color: "#e0ae45", parts: ["stem"], blush: "#ff8a6a", sparkle: "#fff3c4", glow: "#ffe27a", soft: 0.2, pitch: 1.12 },
+  { key: "goldboo", name: "Golden Boo", body: "ghost", finish: "gold", color: "#efc65a", face: "boo", blush: "#ffb3a0", sparkle: "#fffbe0", glow: "#fff3b0", soft: 0.75, pitch: 1.3 },
 ];
 
 const SPOOKY_FINISHES: Finish[] = ["matte", "glitter", "glow"];
@@ -209,6 +223,29 @@ function buildCatalog(): SquishyDef[] {
         foundBy: [{ kind: "box" }],
       });
     }
+  }
+  for (const d of HALLOWEEN) {
+    out.push({
+      no: no++,
+      id: `halloween-${d.key}`,
+      name: d.name,
+      family: "halloween",
+      design: d.name,
+      finish: d.finish,
+      body: d.body,
+      color: d.color,
+      skin: d.skin ?? { kind: "plain" },
+      parts: d.parts ?? [],
+      ink: d.ink ?? DARK_INK,
+      blush: d.blush ?? "#ff9aa8",
+      face: d.face,
+      sparkle: d.sparkle,
+      glow: d.glow,
+      personality: PERSONALITIES[(no * 5 + d.key.length) % PERSONALITIES.length],
+      soft: d.soft,
+      pitch: d.pitch,
+      foundBy: [{ kind: "spookyBox" }],
+    });
   }
   return out;
 }

@@ -1,12 +1,14 @@
 // Squishies passing by, so every place feels lived in: swimmers in the sea at
 // the beach and around the boat, walkers along the city street, hoppers across
 // the tea table and the living room. Each one stops halfway to wave, shows who
-// it is, then carries on. Tap one and it says hi.
+// it is, then carries on. Tap one and it says hi. All October some come by
+// dressed up for trick-or-treating.
 
 import * as THREE from "three";
 import { Squishy, type Bounds, type Fx } from "./squishy";
 import { CATALOG, type SquishyDef } from "./catalog";
 import { isOctober } from "./boxes";
+import { today } from "./season";
 import type { PlaceScene, VisitPath } from "./placeScenes";
 import { moodById, randomMood } from "./personality";
 import { pushOut, route } from "./nav";
@@ -47,6 +49,8 @@ export function pickVisitor(pool: readonly SquishyDef[], date: Date, rand: () =>
   return pool[pool.length - 1] ?? null;
 }
 const SWIM_SPEED = 1.15;
+/** Hats trick-or-treaters come by in. */
+const COSTUMES = ["witch", "pumpkin", "batBow", "candyCorn"];
 /** How far a passer-by's body reaches out along the ground. */
 /** A passer-by's body along the ground (they are smaller than friends), with a little room to spare. */
 const VISITOR_PAD = 0.8;
@@ -123,7 +127,7 @@ export class Visitors {
     sfx.squeak(sq.pitch * 1.15, 0.12, 0.26);
     this.ev.fx("heart", sq.topPoint(), 2);
     this.ev.love(1);
-    this.ev.said(`${sq.def.name} says hi!`);
+    this.ev.said(sq.hatOn && COSTUMES.includes(sq.hatOn) ? `${sq.def.name} says trick or treat!` : `${sq.def.name} says hi!`);
   }
 
   private body(def: SquishyDef): Squishy {
@@ -134,7 +138,9 @@ export class Visitors {
         love: () => {},
         did: () => {},
       });
-    sq.setDesign(def, null);
+    // Trick-or-treaters wear spooky hats.
+    const costume = isOctober(today()) && Math.random() < 0.5 ? COSTUMES[Math.floor(Math.random() * COSTUMES.length)] : null;
+    sq.setDesign(def, costume);
     sq.autoSleep = false;
     sq.cheapSquash = 0.5;
     sq.mood = moodById(randomMood(Math.random));
@@ -160,7 +166,7 @@ export class Visitors {
     if (!way.length) return;
     const busy = new Set([...this.ev.busy(), ...this.list.map((v) => v.sq.def.id)]);
     const pool = CATALOG.filter((d) => !busy.has(d.id) && d.foundBy.some((f) => f.kind === "box"));
-    const def = pickVisitor(pool, new Date(), Math.random) ?? CATALOG[0];
+    const def = pickVisitor(pool, today(), Math.random) ?? CATALOG[0];
     const sq = this.body(def);
     sq.group.scale.setScalar(0.001);
     const pts = [from, ...way];

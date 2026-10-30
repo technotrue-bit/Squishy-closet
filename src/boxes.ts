@@ -1,6 +1,8 @@
 // What comes out of a Squishy Box. Boxes always prefer squishies you don't have
 // yet; rarer finishes come up less often; Spooky squishies are common in
-// October and rare the rest of the year. These odds are the true odds.
+// October and rare the rest of the year. Spooky Boxes (they come on Halloween)
+// only ever hold Spooky squishies and the Halloween Specials, which are found
+// nowhere else. These odds are the true odds.
 
 import { CATALOG, type Finish, type SquishyDef } from "./catalog";
 
@@ -37,6 +39,25 @@ export function openBox(owned: ReadonlySet<string>, date: Date, rand: () => numb
   const fresh = pool.filter((d) => !owned.has(d.id));
   const from = fresh.length ? fresh : pool;
   const def = weightedPick(from, (d) => weightOf(d, date), rand);
+  return { def, isNew: !owned.has(def.id) };
+}
+
+/** Spooky Box odds: a Halloween Special is the likeliest, then the glittery and glowing Spooky ones. */
+export const SPOOKY_BOX_WEIGHT = { special: 20, matte: 4, glitter: 6, glow: 6 } as const;
+
+const spookyWeight = (d: SquishyDef): number =>
+  d.family === "halloween" ? SPOOKY_BOX_WEIGHT.special : d.finish === "matte" ? SPOOKY_BOX_WEIGHT.matte : d.finish === "glitter" ? SPOOKY_BOX_WEIGHT.glitter : SPOOKY_BOX_WEIGHT.glow;
+
+/**
+ * Picks the squishy in a Spooky Box, preferring ones you don't have. The first one you open always holds a Halloween
+ * Special.
+ */
+export function openSpookyBox(owned: ReadonlySet<string>, rand: () => number): BoxResult {
+  const specials = CATALOG.filter((d) => d.foundBy.some((f) => f.kind === "spookyBox"));
+  const spooky = CATALOG.filter((d) => d.family === "spooky" && d.foundBy.some((f) => f.kind === "box"));
+  const pool = specials.some((d) => owned.has(d.id)) ? [...specials, ...spooky] : specials;
+  const fresh = pool.filter((d) => !owned.has(d.id));
+  const def = weightedPick(fresh.length ? fresh : pool, spookyWeight, rand);
   return { def, isNew: !owned.has(def.id) };
 }
 

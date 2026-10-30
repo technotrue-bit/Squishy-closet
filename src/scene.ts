@@ -2,10 +2,12 @@
 // steamer baskets. The big one shows up in front only while a new box is
 // opened; the little one is your squishy's own box, sitting at the back of
 // whichever place you are in (with its lid leaning on it, like the toy).
+// A Spooky Box opens out of a big jack-o'-lantern instead.
 
 import * as THREE from "three";
 import type { PlaceScene } from "./placeScenes";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
+import { pumpkinBox } from "./halloween";
 
 export const BASKET_FLOOR = 0.15;
 /** Inside radius and rim height of the basket, for the squishy to bulge against. */
@@ -89,6 +91,14 @@ export interface Stage {
   shadow: THREE.Mesh;
   /** The steamer lid; it rests leaning behind and closes over a new squishy. */
   lid: THREE.Group;
+  /** The Spooky Box, a jack-o'-lantern in front; hidden the rest of the time. */
+  pumpkin: THREE.Group;
+  /** Its top, with the stem: it pops off. */
+  pumpkinLid: THREE.Group;
+  /** Lights the jack-o'-lantern's face, 0 dim .. 1 bright. */
+  glowPumpkin(k: number): void;
+  /** Shows the Spooky Box (and the shadow under it) or hides it. */
+  showPumpkin(on: boolean): void;
   shadowMat: THREE.MeshBasicMaterial;
   /** Shows a place behind the basket. */
   setPlace(p: PlaceScene): void;
@@ -155,11 +165,18 @@ export function buildStage(renderer?: THREE.WebGLRenderer): Stage {
   homeBox.add(homeShadow);
   scene.add(homeBox);
 
+  const spooky = pumpkinBox(BASKET_FLOOR);
+  scene.add(spooky.obj);
   const showBasket = (on: boolean) => {
     basket.visible = on;
-    basketShadow.visible = on;
+    basketShadow.visible = on || spooky.obj.visible;
+  };
+  const showPumpkin = (on: boolean) => {
+    spooky.obj.visible = on;
+    basketShadow.visible = on || basket.visible;
   };
   showBasket(false);
+  showPumpkin(false);
 
   let place: PlaceScene | null = null;
   let viewD = 8;
@@ -181,6 +198,11 @@ export function buildStage(renderer?: THREE.WebGLRenderer): Stage {
     fitFog();
     fill.color.set(p.light[0]);
     fill.groundColor.set(p.light[1]);
+    // An evening glow: a softer, warmer key and a purple rim round every squishy.
+    key.color.set(p.night ? "#fff0e2" : "#ffffff");
+    key.intensity = p.night ? 1.85 : 2.1;
+    rim.color.set(p.night ? "#b48cff" : "#ffd2f2");
+    rim.intensity = p.night ? 1.7 : 1.1;
     homeBox.position.copy(p.box.at);
     homeBox.rotation.y = p.box.yaw;
   };
@@ -188,7 +210,22 @@ export function buildStage(renderer?: THREE.WebGLRenderer): Stage {
     viewD = d;
     fitFog();
   };
-  return { scene, basket, homeBox, showBasket, basketShadow, setViewDistance, shadow, lid, shadowMat, setPlace };
+  return {
+    scene,
+    basket,
+    homeBox,
+    showBasket,
+    basketShadow,
+    setViewDistance,
+    shadow,
+    lid,
+    pumpkin: spooky.obj,
+    pumpkinLid: spooky.lid,
+    glowPumpkin: spooky.glow,
+    showPumpkin,
+    shadowMat,
+    setPlace,
+  };
 }
 
 /** A bamboo steamer basket with its lid leaning on its edge behind it. */

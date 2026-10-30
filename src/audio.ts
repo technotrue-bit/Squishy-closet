@@ -1,5 +1,6 @@
 // Every sound is made in the browser: rubbery squeaks, boings, purrs, giggles,
-// little thuds and sparkly chimes. No recordings, no voices.
+// little thuds and sparkly chimes, plus bath-time water and a friendly ghostly
+// "ooOOoo" for Halloween. No recordings, no voices.
 
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
@@ -253,6 +254,97 @@ export function pop(): void {
   o.connect(g).connect(master);
   o.start(t);
   o.stop(t + 0.12);
+}
+
+/** Filtered noise that sweeps from one pitch to another: water sounds. */
+function wash(from: number, to: number, seconds: number, loud: number, q = 1): void {
+  const c = ready();
+  if (!c || !master || !noiseBuf) return;
+  const t = c.currentTime;
+  const s = c.createBufferSource();
+  s.buffer = noiseBuf;
+  s.loop = true;
+  const bp = c.createBiquadFilter();
+  bp.type = "bandpass";
+  bp.Q.value = q;
+  bp.frequency.setValueAtTime(from, t);
+  bp.frequency.exponentialRampToValueAtTime(to, t + seconds);
+  const g = c.createGain();
+  env(g, t, loud, Math.min(0.08, seconds * 0.2), seconds * 0.5, seconds * 0.4);
+  s.connect(bp).connect(g).connect(master);
+  s.start(t);
+  s.stop(t + seconds + 0.1);
+}
+
+/** A little splash. */
+export function splash(): void {
+  wash(1800, 500, 0.35, 0.22, 0.8);
+}
+
+/** The tap running for a while, filling the tub. */
+export function pour(seconds = 2): void {
+  wash(900, 1300, seconds, 0.12, 0.6);
+}
+
+/** The shower: a soft hiss. */
+export function spray(): void {
+  wash(3200, 2600, 0.5, 0.06, 0.5);
+}
+
+/** The tub draining: a gurgle that sinks away. */
+export function drain(): void {
+  const c = ready();
+  if (!c || !master) return;
+  const t = c.currentTime;
+  const o = c.createOscillator();
+  o.type = "sine";
+  o.frequency.setValueAtTime(260, t);
+  o.frequency.exponentialRampToValueAtTime(70, t + 1.4);
+  const lfo = c.createOscillator();
+  lfo.frequency.value = 11;
+  const lg = c.createGain();
+  lg.gain.value = 60;
+  lfo.connect(lg).connect(o.frequency);
+  const g = c.createGain();
+  env(g, t, 0.18, 0.05, 0.9, 0.5);
+  o.connect(g).connect(master);
+  for (const n of [o, lfo]) {
+    n.start(t);
+    n.stop(t + 1.6);
+  }
+  wash(700, 200, 1.4, 0.08, 1.5);
+}
+
+/** A friendly little ghost: "ooOOoo", rising and falling with a wobble. Cute, not scary. */
+export function boo(pitch = 1): void {
+  const c = ready();
+  if (!c || !master) return;
+  const t = c.currentTime;
+  const o = c.createOscillator();
+  o.type = "sine";
+  o.frequency.setValueAtTime(420 * pitch, t);
+  o.frequency.exponentialRampToValueAtTime(700 * pitch, t + 0.35);
+  o.frequency.exponentialRampToValueAtTime(380 * pitch, t + 0.9);
+  const vib = c.createOscillator();
+  vib.frequency.value = 6;
+  const vg = c.createGain();
+  vg.gain.value = 18 * pitch;
+  vib.connect(vg).connect(o.frequency);
+  const o2 = c.createOscillator();
+  o2.type = "triangle";
+  o2.frequency.setValueAtTime(840 * pitch, t);
+  o2.frequency.exponentialRampToValueAtTime(1400 * pitch, t + 0.35);
+  o2.frequency.exponentialRampToValueAtTime(760 * pitch, t + 0.9);
+  const g = c.createGain();
+  env(g, t, 0.2, 0.12, 0.45, 0.4);
+  const g2 = c.createGain();
+  g2.gain.value = 0.15;
+  o.connect(g).connect(master);
+  o2.connect(g2).connect(g);
+  for (const n of [o, vib, o2]) {
+    n.start(t);
+    n.stop(t + 1.05);
+  }
 }
 
 export function vibrate(ms: number): void {

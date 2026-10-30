@@ -1,9 +1,10 @@
 // Squishy Island, the title screen: a round pastel island in a calm sea, the
 // Squishy Closet in the middle and eight places around it where squishies
 // live. Little buns hop about while the camera drifts slowly round. Spooky
-// Hollow lights up in October.
+// Hollow lights up in October, and the whole island dresses up for Halloween.
 
 import * as THREE from "three";
+import { dressIsland, tinyWitchHat } from "./halloween";
 
 export interface Island {
   scene: THREE.Scene;
@@ -240,8 +241,13 @@ interface MiniBun {
   phase: number;
 }
 
-function miniBun(color: string): THREE.Object3D {
+function miniBun(color: string, hat = false): THREE.Object3D {
   const g = new THREE.Group();
+  if (hat) {
+    const h = tinyWitchHat(0.32);
+    h.position.y = 0.38;
+    g.add(h);
+  }
   const b = sphere(0.26, color, { roughness: 0.45 });
   b.scale.set(1, 0.78, 1);
   b.position.y = 0.2;
@@ -259,12 +265,13 @@ export function buildIsland(date = new Date()): Island {
   const scene = new THREE.Scene();
   scene.background = sky();
   scene.fog = new THREE.Fog("#ffd9ea", 30, 70);
-  scene.add(new THREE.HemisphereLight("#ffffff", "#bfe6ff", 1.5));
-  const sun = new THREE.DirectionalLight("#fff6e8", 2.2);
+  // At Halloween: a dusky evening, with a low warm sun and a purple sea.
+  scene.add(october ? new THREE.HemisphereLight("#e2d4ff", "#ffb88a", 1.35) : new THREE.HemisphereLight("#ffffff", "#bfe6ff", 1.5));
+  const sun = new THREE.DirectionalLight(october ? "#ffd9b8" : "#fff6e8", october ? 1.9 : 2.2);
   sun.position.set(-6, 12, 8);
   scene.add(sun);
 
-  const sea = new THREE.Mesh(new THREE.CircleGeometry(60, 64), mat("#8fd8f0", { roughness: 0.35 }));
+  const sea = new THREE.Mesh(new THREE.CircleGeometry(60, 64), mat(october ? "#7f86d8" : "#8fd8f0", { roughness: 0.35 }));
   sea.rotation.x = -Math.PI / 2;
   scene.add(sea);
   const foams: THREE.Mesh[] = [];
@@ -302,7 +309,7 @@ export function buildIsland(date = new Date()): Island {
 
   const colors = ["#f2a9cf", "#f8c3c6", "#ffffff", "#c9a8f0", "#a9d18e", "#ffc94d", "#ff9a3c", "#7fd6ff", "#d9573f", "#2f63d8"];
   const buns: MiniBun[] = colors.map((c, i) => {
-    const obj = miniBun(c);
+    const obj = miniBun(c, october && i % 3 === 0);
     scene.add(obj);
     const a = (i / colors.length) * Math.PI * 2 + 0.3;
     const r = 2.0 + (i % 3) * 0.6;
@@ -310,6 +317,9 @@ export function buildIsland(date = new Date()): Island {
   });
 
   const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 200);
+  // Grass height at a distance from the middle.
+  const groundAt = (r: number) => 0.22 + 0.16 * Math.sqrt(Math.max(0, 5.9 * 5.9 - r * r));
+  const party = october ? dressIsland(scene, groundAt) : null;
   let dist = 20;
   const look = new THREE.Vector3(0, 1.1, 0);
 
@@ -341,7 +351,7 @@ export function buildIsland(date = new Date()): Island {
       for (const [i, f] of foams.entries()) f.scale.setScalar(1 + Math.sin(t * 0.9 + i) * 0.015);
       if (star) star.rotation.y = t * 0.8;
       if (october) for (const [i, m] of sp.glow.entries()) m.emissiveIntensity = 0.45 + 0.2 * Math.sin(t * 2 + i);
-      void dt;
+      party?.(dt, t);
     },
   };
 }
