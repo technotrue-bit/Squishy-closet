@@ -84,6 +84,9 @@ const CSS = `
 
 .ui .wishplay { position: absolute; inset: 0; display: none; pointer-events: auto; background: radial-gradient(circle at 50% 70%, #fff7fb 0%, #ffd9ea 55%, #e9d4ff 100%); touch-action: none; overflow: hidden; }
 .ui .wishplay.on { display: block; animation: fadeIn 0.25s ease-out; }
+.ui .wishplay.won .close, .ui .wishplay.won .dots, .ui .wishplay.won .how { opacity: 0; pointer-events: none; transition: opacity 0.3s; }
+.ui .wishplay.bye { animation: fadeAway 0.35s ease-in forwards; pointer-events: none; }
+@keyframes fadeAway { to { opacity: 0; } }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 .ui .wishplay .close { position: absolute; top: calc(env(safe-area-inset-top) + 12px); right: 12px; z-index: 3; }
 .ui.framed .wishplay .close { top: calc(env(safe-area-inset-top) + 64px); }
@@ -97,10 +100,10 @@ const CSS = `
 .ui .wishplay .kid img { width: 100%; height: 100%; display: block; pointer-events: none; -webkit-user-drag: none; }
 .ui .wishplay .kid.boing { animation: boing 0.5s cubic-bezier(.3,1.6,.5,1); }
 .ui .wishplay .kid.rock img { animation: rock 1.1s ease-in-out infinite; }
-.ui .wishplay .kid.yay { animation: yay 0.8s cubic-bezier(.3,1.6,.5,1) 2; }
+.ui .wishplay .kid.cheer { animation: cheer 0.8s cubic-bezier(.3,1.6,.5,1) 2; }
 @keyframes boing { 0% { transform: scale(1.15, 0.85); } 40% { transform: translateY(-50px) scale(0.92, 1.1); } 100% { transform: none; } }
 @keyframes rock { 0%,100% { transform: rotate(-7deg); } 50% { transform: rotate(7deg); } }
-@keyframes yay { 0% { transform: scale(1); } 30% { transform: translateY(-40px) scale(1.12); } 60% { transform: scale(1.1, 0.9); } 100% { transform: none; } }
+@keyframes cheer { 0% { transform: scale(1); } 30% { transform: translateY(-40px) scale(1.12); } 60% { transform: scale(1.1, 0.9); } 100% { transform: none; } }
 .ui .wishplay .ring { position: absolute; inset: -14px; width: calc(100% + 28px); height: calc(100% + 28px); pointer-events: none; transform: rotate(-90deg); }
 .ui .wishplay .ring circle { fill: none; stroke-width: 10; stroke-linecap: round; }
 .ui .wishplay .thing { position: absolute; width: 76px; height: 76px; margin: -38px 0 0 -38px; display: grid; place-items: center; font-size: 54px; line-height: 1; touch-action: none; cursor: pointer; }
@@ -400,6 +403,8 @@ export class Ui {
   private sheetEl: HTMLElement;
   private wishEl: HTMLElement;
   private wishDone: ((did: boolean) => void) | null = null;
+  /** The wish was done and it's cheering: closing it now still counts. */
+  private wishWon = false;
   private jobsEl: HTMLElement;
   private cookiesEl: HTMLElement;
   private hatsDot: HTMLElement;
@@ -1008,10 +1013,11 @@ export class Ui {
     const finish = () => {
       if (over) return;
       over = true;
+      this.wishWon = true;
+      el.classList.add("won");
       kid.classList.remove("boing", "rock");
       void kid.offsetWidth;
-      kid.classList.add("yay");
-      el.querySelector(".how")!.textContent = "";
+      kid.classList.add("cheer");
       for (const t of el.querySelectorAll(".thing")) t.remove();
       const yay = document.createElement("div");
       yay.className = "yay";
@@ -1020,7 +1026,9 @@ export class Ui {
       const m = kidMid();
       for (let i = 0; i < 8; i++) later(() => puff(m.x + rnd(-m.r, m.r), m.y - m.r * 0.6, i % 2 ? "💖" : "✨"), i * 90);
       g.beat(true, total);
-      later(() => this.endWish(true), 1700);
+      // A moment to cheer, then the screen fades away back to play.
+      later(() => el.classList.add("bye"), 1500);
+      later(() => this.endWish(true), 1850);
     };
     const step = () => {
       if (over) return;
@@ -1209,12 +1217,14 @@ export class Ui {
 
   private endWish(did: boolean): void {
     if (!this.wishEl.classList.contains("on")) return;
-    this.wishEl.classList.remove("on");
+    this.wishEl.classList.remove("on", "won", "bye");
     this.root.classList.remove("wish-on");
     this.wishEl.innerHTML = "";
+    const won = this.wishWon;
+    this.wishWon = false;
     const done = this.wishDone;
     this.wishDone = null;
-    done?.(did);
+    done?.(did || won);
     this.coverChanged();
   }
 
