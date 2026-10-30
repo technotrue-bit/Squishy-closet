@@ -8,7 +8,7 @@
 import * as THREE from "three";
 import { Gestures, type GestureEvent } from "./gestures";
 import { Squishy, type Bounds } from "./squishy";
-import { buildStage, BASKET_FLOOR, BASKET_WALL, LID_CLOSED, LID_REST } from "./scene";
+import { buildStage, BASKET_FLOOR, BASKET_WALL, canvasTex, LID_CLOSED, LID_REST } from "./scene";
 import { buildIsland } from "./island";
 import { Effects } from "./fx";
 import { Ui, type HandMove, type Screen, type ShelfState } from "./ui";
@@ -46,6 +46,7 @@ import { Visitors } from "./visitors";
 import { Nursery } from "./nursery";
 import { moodById, randomMood, type MoodId } from "./personality";
 import { combineSaves, decodeSave, encodeSave, findCode, HASH, keepStorage, moveLink } from "./move";
+import { decodeGift, encodeGift, findGift, makeGift, openGift, receiveGift, sentGift, type Gift } from "./gift";
 import {
   BABIES_MAX,
   fulfil,
@@ -591,8 +592,10 @@ interface Reveal {
   def: SquishyDef;
   first: boolean;
   taps: number;
-  /** Closing the lid, waiting for taps, popping open. */
-  phase: "closing" | "waiting" | "popping" | "done";
+  /** Squishy mail drifting down (gifts only), closing the lid, waiting for taps, popping open. */
+  phase: "falling" | "closing" | "waiting" | "popping" | "done";
+  /** Squishy mail from a friend, opened with one tap. */
+  gift?: Gift;
   t: number;
   shake: number;
 }
@@ -625,7 +628,7 @@ function tapBox(): void {
   sfx.squeak(1 + reveal.taps * 0.15, 0.12, 0.3);
   sfx.vibrate(12 * reveal.taps);
   fx.emit("sparkle", new THREE.Vector3(0, 0.7, 0.6), 2 + reveal.taps * 2);
-  if (reveal.taps >= 3) {
+  if (reveal.taps >= (reveal.gift ? 1 : 3)) {
     reveal.phase = "popping";
     reveal.t = 0;
     ui.hint(null);
@@ -636,6 +639,10 @@ function tapBox(): void {
 
 function popOut(): void {
   if (!reveal) return;
+  if (reveal.gift) {
+    popGift();
+    return;
+  }
   const { def, first } = reveal;
   if (!first) save.boxes = Math.max(0, save.boxes - 1);
   const got = collect(save, def.id, Date.now(), randomMood(Math.random));
@@ -679,6 +686,372 @@ function popOut(): void {
     squishy.hello();
     if (hat) showNewHat(hat);
   }, 1100);
+}
+
+// ---- squishy mail -------------------------------------------------------
+// Sending: the squishy bounces into its steamer box, the lid closes, and once the link is sent the box floats up
+// and away in a trail of sparkles. Your squishy stays with you; your friend gets a twin. Getting one: the box drifts
+// down onto the glowing inbox pad, one tap opens it, and the squishy pops out.
+
+/** The glowing spot squishy mail lands on. */
+const mailPad = (() => {
+  const tex = canvasTex(256, 256, (c) => {
+    const g = c.createRadialGradient(128, 128, 20, 128, 128, 128);
+    g.addColorStop(0, "rgba(255,255,255,0.0)");
+    g.addColorStop(0.55, "rgba(186,232,255,0.55)");
+    g.addColorStop(0.78, "rgba(255,190,225,0.85)");
+    g.addColorStop(1, "rgba(255,190,225,0)");
+    c.fillStyle = g;
+    c.fillRect(0, 0, 256, 256);
+    c.fillStyle = "rgba(255,255,255,0.95)";
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2;
+      const x = 128 + Math.cos(a) * 92;
+      const y = 128 + Math.sin(a) * 92;
+      c.beginPath();
+      for (let k = 0; k < 8; k++) {
+        const rr = k % 2 ? 3 : 8;
+        const b = (k / 8) * Math.PI * 2;
+        c.lineTo(x + Math.cos(b) * rr, y + Math.sin(b) * rr);
+      }
+      c.fill();
+    }
+  });
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 3.6), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, opacity: 0 }));
+  m.rotation.x = -Math.PI / 2;
+  m.position.y = 0.008;
+  m.visible = false;
+  stage.scene.add(m);
+  return m;
+})();
+const padMat = mailPad.material as THREE.MeshBasicMaterial;
+/** Seconds into fading the pad out, or -1. */
+let padAway = -1;
+const FALL_FROM = 8.5;
+const FALL_SECONDS = 2.6;
+let trailAt = 0;
+const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
+
+/** Lifts or drops the opening basket, with its shadow shrinking as it goes up. */
+function liftBasket(y: number): void {
+  stage.basket.position.y = y;
+  const k = 1 / (1 + Math.max(0, y) * 0.45);
+  stage.basketShadow.scale.setScalar(k);
+  (stage.basketShadow.material as THREE.MeshBasicMaterial).opacity = k;
+}
+
+function resetBasket(): void {
+  stage.basket.position.set(0, 0, 0);
+  stage.basket.rotation.set(0, 0, 0);
+  stage.basket.scale.setScalar(1);
+  liftBasket(0);
+}
+
+/** A sparkle trail behind a flying box. */
+function trail(now: number, every = 0.08): void {
+  if (now < trailAt) return;
+  trailAt = now + every;
+  const at = stage.basket.position.clone();
+  at.y += 0.1;
+  fx.emit("glimmer", at, 1);
+  if (Math.random() < 0.3) fx.emit("sparkle", at, 1);
+}
+
+/** Puts the one you hold back in front, popping in. */
+function bringBackHeld(): void {
+  const id = save.active;
+  const def = id && defById(id);
+  if (def && id) showHeld(def, id);
+  squishy.basket.r = 0;
+  squishy.placeAt(FLOOR_HOME);
+  squishy.group.visible = true;
+  squishy.group.scale.setScalar(1);
+  popScale = 0.15;
+  squishy.popIn();
+}
+
+// Getting squishy mail
+
+/** A gift code from a link or paste: into the inbox. Returns what to tell the kid. */
+function takeGift(code: string | null, text: string): string {
+  const g = code ? decodeGift(code) : null;
+  if (!g) return findCode(text) ? "That's a move link. Open it from Settings, Move to a new phone." : "That squishy link didn't work. Ask for a new one.";
+  const got = receiveGift(save, g);
+  persist();
+  ui.setMail(save.inbox.length);
+  if (got === "own") return "That's your own squishy mail! Send the link to a friend.";
+  if (got === "again") return "You already got this squishy mail!";
+  if (got === "full") return "Your inbox is full! Open your squishy mail first.";
+  mailClock = 0;
+  return screen === "title" ? "Squishy mail is coming! Tap Play" : "Squishy mail is coming!";
+}
+
+let mailClock = 0;
+/** Mail waits for a calm moment in the closet, after the tutorial. */
+function stepMail(dt: number): void {
+  if (!save.inbox.length || ui.busy || tutorialStep() || reveal || ship || !squishy.isHome || fingers.size) {
+    mailClock = 0;
+    return;
+  }
+  mailClock += dt;
+  if (mailClock > 1.4) startMail();
+}
+
+function startMail(): void {
+  const gift = save.inbox[0];
+  const def = gift && defById(gift.id);
+  if (!gift || !def || reveal || ship) return;
+  mailClock = 0;
+  reveal = { def, first: false, taps: 0, phase: "falling", t: 0, shake: 0, gift };
+  fingersUp();
+  setScreen("box");
+  basketAway = -1;
+  resetBasket();
+  stage.showBasket(true);
+  liftBasket(FALL_FROM);
+  placeLid(1, 0);
+  squishy.placeAt(new THREE.Vector3(0, BASKET_FLOOR - BOTTOM_Y, 0));
+  Object.assign(squishy.basket, BASKET_WALL);
+  squishy.group.visible = false;
+  padAway = -1;
+  mailPad.visible = true;
+  padMat.opacity = 0;
+  ui.hint("Squishy mail!", "A friend sent you a squishy");
+  sfx.whoosh();
+  setTimeout(() => sfx.chime(false), 500);
+}
+
+/** The box floats down, swaying like a leaf, and settles on the pad. */
+function stepFalling(r: Reveal, dt: number, now: number): void {
+  const k = Math.min(1, r.t / FALL_SECONDS);
+  const e = easeOut(k);
+  liftBasket(FALL_FROM * (1 - e));
+  const calm = 1 - e;
+  stage.basket.rotation.set(Math.cos(now * 1.7) * 0.1 * calm, Math.sin(now * 0.9) * 0.6 * calm, Math.sin(now * 2.2) * 0.18 * calm);
+  stage.basket.position.x = Math.sin(now * 1.3) * 0.5 * calm;
+  placeLid(1, 0);
+  padMat.opacity = 0.35 + 0.55 * e + Math.sin(now * 5) * 0.08;
+  mailPad.scale.setScalar(0.85 + 0.15 * e);
+  trail(now, 0.09 + 0.1 * e);
+  if (k >= 1) {
+    resetBasket();
+    r.phase = "waiting";
+    r.shake = 1.2;
+    sfx.thud(0.5);
+    sfx.vibrate(15);
+    fx.emit("sparkle", new THREE.Vector3(0, 0.5, 0.6), 8);
+    fx.emit("glimmer", new THREE.Vector3(0, 0.4, 0.4), 10);
+    ui.hint("Squishy mail!", "Tap the box to open it");
+  }
+  void dt;
+}
+
+/** The mail box pops open: the squishy jumps out and says hi. */
+function popGift(): void {
+  if (!reveal) return;
+  const opened = openGift(save, Date.now());
+  if (!opened) {
+    reveal = null;
+    setScreen("closet");
+    return;
+  }
+  const { def } = reveal;
+  const id = def.id;
+  const prevActive = save.active;
+  if (opened.isNew) holdSquishy(save, id);
+  persist();
+  ui.setMail(save.inbox.length);
+  if (opened.newHat) ui.newHat(true);
+  padAway = 0;
+  // Show it as it came, hat and all, even if it's one you had.
+  squishy.setDesign(def, opened.isNew ? hatOf(id) : (opened.gift.hat ?? null));
+  squishy.mood = moodById(opened.isNew ? moodIdOf(id) : opened.gift.mood);
+  squishy.group.visible = true;
+  popScale = 0.15;
+  squishy.popIn();
+  const at = squishy.topPoint();
+  fx.emit("glimmer", at, 18);
+  fx.emit("sparkle", at, 12);
+  fx.emit("heart", at, 8);
+  fx.emit("star", at, 3);
+  sfx.pop();
+  sfx.chime(true);
+  setTimeout(async () => {
+    await ui.card({
+      def,
+      name: nameOf(save, id),
+      isNew: opened.isNew,
+      stars: opened.isNew ? undefined : opened.stars,
+      mood: opened.isNew ? moodIdOf(id) : opened.gift.mood,
+      arrived: true,
+      cameWith: opened.newHat ? hatById(opened.newHat)?.name : undefined,
+    });
+    if (!opened.isNew && prevActive) {
+      const back = defById(prevActive);
+      if (back) showHeld(back, prevActive);
+    }
+    reveal = null;
+    syncTeam();
+    setScreen("closet");
+    squishy.basket.r = 0;
+    squishy.placeAt(FLOOR_HOME);
+    basketAway = 0;
+    squishy.hello();
+  }, 1100);
+}
+
+// Sending squishy mail
+
+interface Ship {
+  id: string;
+  name: string;
+  link: string;
+  /** Jumping into the box, the lid closing, packed while the link is shared, flying away, or unpacking. */
+  phase: "jump" | "closing" | "packed" | "lift" | "unpack";
+  t: number;
+  /** Things done once per phase. */
+  did: number;
+}
+let ship: Ship | null = null;
+const BOX_SPOT = new THREE.Vector3(0, BASKET_FLOOR - BOTTOM_Y, 0);
+
+function shareSquishy(id: string): void {
+  const def = defById(id);
+  if (!def || !save.owned[id] || screen !== "closet" || reveal || ship) return;
+  if (tutorialStep()) {
+    ui.toast("Finish learning to play first!", 1800);
+    return;
+  }
+  const gift = makeGift(save, id);
+  if (!gift) return;
+  sentGift(save, gift);
+  persist();
+  const link = moveLink(encodeGift(gift), location, document.referrer, window.parent !== window);
+  ship = { id, name: nameOf(save, id), link, phase: "jump", t: 0, did: 0 };
+  fingersUp();
+  setScreen("box");
+  basketAway = -1;
+  // The one being sent comes out in front, wearing its hat.
+  if (id !== save.active || !squishy.isHome) {
+    squishy.setDesign(def, hatOf(id));
+    squishy.mood = moodById(moodIdOf(id));
+  }
+  squishy.basket.r = 0;
+  squishy.placeAt(FLOOR_HOME);
+  squishy.group.visible = true;
+  squishy.group.scale.setScalar(1);
+  popScale = 1;
+  resetBasket();
+  stage.basket.scale.setScalar(0.001);
+  stage.showBasket(true);
+  placeLid(0, 0);
+  ui.hint(`Off you go, ${ship.name}!`, "Into the box!");
+  squishy.wiggle();
+}
+
+function stepShip(dt: number, now: number): void {
+  const s = ship;
+  if (!s) return;
+  s.t += dt;
+  if (s.phase === "jump") {
+    // The box pops up, the squishy bounces high and lands inside it.
+    const grow = Math.min(1, Math.max(0, (s.t - 0.35) / 0.35));
+    stage.basket.scale.setScalar(Math.max(0.001, grow + Math.sin(grow * Math.PI) * 0.15));
+    if (s.did === 0 && s.t > 0.45) {
+      s.did = 1;
+      squishy.bounce(6);
+      sfx.boing(squishy.pitch);
+      sfx.whoosh();
+    }
+    if (s.did === 1 && s.t > 0.6) {
+      s.did = 2;
+      squishy.placeAt(BOX_SPOT);
+      Object.assign(squishy.basket, BASKET_WALL);
+    }
+    if (s.t > 1.55) {
+      s.phase = "closing";
+      s.t = 0;
+      s.did = 0;
+      sfx.thud(0.4);
+      fx.emit("sparkle", squishy.topPoint(), 6);
+    }
+  } else if (s.phase === "closing") {
+    // It snuggles down as the lid comes over.
+    const k = Math.min(1, s.t / 0.7);
+    placeLid(ease(k), 0.9);
+    const duck = Math.min(1, Math.max(0, (k - 0.15) / 0.6));
+    squishy.group.scale.set(1 - duck * 0.35, 1 - duck * 0.7, 1 - duck * 0.35);
+    if (duck >= 1) squishy.group.visible = false;
+    if (k >= 1) {
+      s.phase = "packed";
+      s.t = 0;
+      sfx.thud(0.6);
+      fx.emit("glimmer", new THREE.Vector3(0, 0.6, 0.4), 12);
+      fx.emit("heart", new THREE.Vector3(0, 0.8, 0.4), 3);
+      ui.hint(null);
+      void ui.shareSheet(s.name, s.link).then((sent) => {
+        if (ship !== s) return;
+        s.phase = sent ? "lift" : "unpack";
+        s.t = 0;
+        s.did = 0;
+      });
+    }
+  } else if (s.phase === "packed") {
+    // Waiting for the link to go: a happy little wobble.
+    placeLid(1, 0);
+    stage.basket.rotation.z = Math.sin(now * 3) * 0.04;
+  } else if (s.phase === "lift") {
+    if (s.did === 0) {
+      s.did = 1;
+      sfx.whoosh();
+      sfx.chime(true);
+      fx.emit("sparkle", new THREE.Vector3(0, 0.3, 0.5), 10);
+    }
+    // A little crouch, then up and away, swaying and turning, smaller and smaller.
+    const crouch = Math.min(1, s.t / 0.3);
+    const k = Math.max(0, (s.t - 0.3) / 2.4);
+    if (k === 0) stage.basket.scale.set(1 + 0.08 * Math.sin(crouch * Math.PI), 1 - 0.12 * Math.sin(crouch * Math.PI), 1 + 0.08 * Math.sin(crouch * Math.PI));
+    else {
+      const e = Math.pow(Math.min(1, k), 1.5);
+      liftBasket(e * 9);
+      stage.basket.position.x = Math.sin(k * Math.PI * 1.6) * 0.6;
+      stage.basket.rotation.set(Math.sin(now * 2) * 0.08, k * 2.4, Math.sin(now * 2.6) * 0.16);
+      stage.basket.scale.setScalar(1 - 0.45 * Math.min(1, k));
+      trail(now, 0.08);
+    }
+    placeLid(1, 0);
+    if (k >= 1) {
+      ship = null;
+      stage.showBasket(false);
+      resetBasket();
+      placeLid(0, 0);
+      bringBackHeld();
+      setScreen("closet");
+      ui.toast(`On its way! ${s.name} stays with you too.`, 2400);
+    }
+  } else if (s.phase === "unpack") {
+    // Not now: the lid pops off and it hops back out.
+    const k = Math.min(1, s.t / 0.75);
+    placeLid(1 - ease(k), 2.2, Math.sin(k * Math.PI) * 1.2);
+    if (s.did === 0) {
+      s.did = 1;
+      squishy.group.visible = true;
+      squishy.group.scale.setScalar(1);
+      squishy.popIn();
+      fx.emit("sparkle", squishy.topPoint(), 6);
+    }
+    if (k >= 1) {
+      ship = null;
+      const held = save.active;
+      squishy.basket.r = 0;
+      squishy.placeAt(FLOOR_HOME);
+      basketAway = 0;
+      setScreen("closet");
+      // If it wasn't the one you hold, that one comes back.
+      if (held && held !== s.id) setTimeout(() => !ship && !reveal && bringBackHeld(), 450);
+      else squishy.hello();
+    }
+  }
 }
 
 // ---- screens ----------------------------------------------------------
@@ -781,6 +1154,12 @@ const ui = new Ui(
       if (save.tutorial !== "done") finishTutorial();
     },
     moveLink: async () => moveLink(await encodeSave(save), location, document.referrer, window.parent !== window),
+    share: (id) => shareSquishy(id),
+    mail: () => save.inbox.length,
+    openMail: () => {
+      if (screen === "closet" && save.inbox.length) startMail();
+    },
+    receive: (text) => takeGift(findGift(text), text),
     bringIn: async (text) => {
       const code = findCode(text);
       const other = code && (await decodeSave(code));
@@ -1008,6 +1387,10 @@ function stepReveal(dt: number, now: number): void {
   if (!r) return;
   r.t += dt;
   const lid = stage.lid;
+  if (r.phase === "falling") {
+    stepFalling(r, dt, now);
+    return;
+  }
   if (r.phase === "closing") {
     const k = Math.min(1, r.t / 0.6);
     placeLid(ease(k), 0.9);
@@ -1112,6 +1495,7 @@ function frame(): void {
   }
   gestures.update(t);
   stepReveal(dt, now);
+  stepShip(dt, now);
   squishy.update(dt, now, bounds);
   const place = placeScene(placeId);
   place.update(dt, now);
@@ -1122,6 +1506,7 @@ function frame(): void {
     stepBabies(dt);
     stepWants(dt);
     stepGrowClock(dt);
+    stepMail(dt);
   }
   const sway = place.sway(now);
   swayCamera(camera, sway.roll, sway.bob);
@@ -1157,6 +1542,14 @@ function frame(): void {
       stage.basket.scale.setScalar(1);
     }
   }
+  if (padAway >= 0) {
+    padAway += dt;
+    padMat.opacity = Math.max(0, 0.9 - padAway * 0.9);
+    if (padMat.opacity <= 0) {
+      padAway = -1;
+      mailPad.visible = false;
+    }
+  }
   // Soft shadow under the bun, except while it sits in the opening basket.
   const p = squishy.group.position;
   const out = !stage.basket.visible || Math.hypot(p.x, p.z) > 0.3;
@@ -1180,6 +1573,7 @@ if (save.tutorial === "done" && addHat(save, "party")) {
 goPlace(save.place, true);
 syncTeam();
 syncBabies();
+ui.setMail(save.inbox.length);
 setScreen("title");
 requestAnimationFrame(frame);
 
@@ -1195,7 +1589,12 @@ function bringIn(other: Save): void {
 }
 
 // A move link opened on this phone: the code is in the #fragment, which never reaches a server.
-if (location.hash.startsWith(HASH)) {
+// Squishy mail from a friend comes in the same spot.
+if (location.hash.startsWith(HASH) && findGift(location.hash)) {
+  const code = findGift(location.hash);
+  history.replaceState(null, "", location.pathname + location.search);
+  ui.toast(takeGift(code, location.hash), 2600);
+} else if (location.hash.startsWith(HASH)) {
   const code = findCode(location.hash);
   history.replaceState(null, "", location.pathname + location.search);
   void (async () => {

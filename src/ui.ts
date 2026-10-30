@@ -176,6 +176,25 @@ const CSS = `
 .ui .big { padding: 14px 34px; border-radius: 999px; font-size: 26px; font-weight: 900; color: #fff !important; background: linear-gradient(180deg, #ff9cc8, #ff4f8d); box-shadow: 0 5px 0 #c2346c; }
 .ui .big.alt { background: linear-gradient(180deg, #d8c2ff, #9a72e0); box-shadow: 0 5px 0 #7350b8; }
 .ui .big:active { transform: translateY(3px); box-shadow: 0 2px 0 #c2346c; }
+.ui .card .arrived { margin: 4px 30px 0; font-weight: 900; font-size: 20px; line-height: 1.15; color: #fff; background: linear-gradient(180deg, #8fdcff, #4fb3f0); box-shadow: 0 3px 0 #2a86c4; border-radius: 16px; padding: 6px 10px; animation: wiggle 1.4s ease-in-out 2; }
+.ui .card .came { font-weight: 800; font-size: 15px; color: #d07a10; margin: -6px 0 12px; }
+.ui .card .btns.three { flex-wrap: wrap; gap: 8px; }
+.ui .card .btns.three .big { font-size: 20px; padding: 12px 18px; display: inline-flex; align-items: center; gap: 6px; }
+.ui .card .send { order: -1; flex: 1 1 100%; justify-content: center; background: linear-gradient(180deg, #8fdcff, #4fb3f0) !important; box-shadow: 0 5px 0 #2a86c4 !important; }
+.ui .card .send .gift-sm { width: 24px; height: 24px; }
+.ui .book .mailbox { margin: 4px 12px 0; padding: 10px 12px 8px; border-radius: 22px; background: linear-gradient(180deg, #eaf8ff, #d6f0ff); box-shadow: 0 3px 0 #a8dcf5; }
+.ui .book .mtop { display: flex; align-items: center; gap: 10px; }
+.ui .book .mico { position: relative; width: 48px; height: 48px; flex: none; }
+.ui .book .mico svg { width: 48px; height: 48px; display: block; }
+.ui .book .mico .badge { position: absolute; top: -6px; right: -8px; min-width: 22px; height: 22px; padding: 0 5px; box-sizing: border-box; border-radius: 11px; background: #ff5f9c; color: #fff; font-size: 14px; font-weight: 900; display: grid; place-items: center; }
+.ui .book .mtxt { flex: 1; min-width: 0; text-align: left; line-height: 1.2; }
+.ui .book .mtxt b { display: block; font-size: 18px; color: #2a86c4; }
+.ui .book .mtxt small { display: block; font-size: 14px; font-weight: 800; color: #4f8fb8; }
+.ui .book .mopen { flex: none; padding: 10px 18px; border-radius: 999px; font-size: 18px; font-weight: 900; color: #fff !important; background: linear-gradient(180deg, #ff9cc8, #ff4f8d); box-shadow: 0 4px 0 #c2346c; animation: wiggle 1.4s ease-in-out infinite; }
+.ui .book .mpaste { display: block; margin: 8px auto 0; padding: 4px 8px; background: none; font-size: 13px; font-weight: 800; color: #4f8fb8; text-decoration: underline; }
+.ui .move.gift .qr { width: min(56vw, 230px); }
+.ui .move.gift .btns + .btns { margin-top: 10px; }
+.ui .move.gift .off { font-size: 22px; padding: 14px 34px; }
 .ui .card .repeat { font-weight: 800; font-size: 16px; color: #d48a00; margin: 8px 0 12px; }
 
 .ui .book { position: absolute; inset: 0; display: none; pointer-events: auto; background: linear-gradient(180deg, #fff4fa, #ffe6f1); overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y; }
@@ -247,6 +266,8 @@ const CSS = `
 const HEART = `<svg class="heart" viewBox="0 0 32 32"><path d="M16 28C7 21 3 17 3 11c0-5 4-8 8-8 2.5 0 4 1.2 5 3 1-1.8 2.5-3 5-3 4 0 8 3 8 8 0 6-4 10-13 17z" fill="#ff4f8d" stroke="#fff" stroke-width="2.5"/><ellipse cx="10" cy="10" rx="2.6" ry="1.8" fill="#fff" opacity=".8" transform="rotate(-35 10 10)"/></svg>`;
 /** A little steamer basket with a bow: a squishy box. */
 const GIFT = `<svg viewBox="0 0 40 40"><rect x="5" y="17" width="30" height="17" rx="5" fill="#ffe6c4" stroke="#fff" stroke-width="2"/><path d="M5 23h30" stroke="#e3b27a" stroke-width="2"/><rect x="3" y="11" width="34" height="8" rx="4" fill="#fff6e8" stroke="#fff" stroke-width="2"/><path d="M20 11v23" stroke="#ff7fb0" stroke-width="4"/><path d="M20 11c-4-7-11-6-9-1 1 2 5 2 9 1zM20 11c4-7 11-6 9-1-1 2-5 2-9 1z" fill="#ff7fb0"/></svg>`;
+const GIFT_SM = `<svg class="gift-sm" viewBox="0 0 40 40"><rect x="7" y="17" width="26" height="16" rx="4" fill="#fff"/><rect x="5" y="11" width="30" height="8" rx="4" fill="#fff"/><path d="M20 11v22" stroke="#9a72e0" stroke-width="4"/><path d="M20 11c-4-7-11-6-9-1 1 2 5 2 9 1zM20 11c4-7 11-6 9-1-1 2-5 2-9 1z" fill="#fff"/></svg>`;
+const MAILBOX = `<svg viewBox="0 0 48 48"><path d="M8 20a10 10 0 0 1 20 0v18H8z" fill="#8fdcff"/><path d="M18 10h12a10 10 0 0 1 10 10v18H28V20a10 10 0 0 0-10-10z" fill="#4fb3f0"/><rect x="21" y="38" width="6" height="8" rx="2" fill="#c98d58"/><rect x="11" y="24" width="14" height="4" rx="2" fill="#fff"/><path d="M40 16v-8h-7v5h4v3z" fill="#ff5f9c"/><circle cx="18" cy="32" r="3.2" fill="#ffd84d"/></svg>`;
 const BOOK = `<svg viewBox="0 0 40 40"><path d="M7 7c5-2 9-1 13 2v24c-4-3-8-4-13-2z" fill="#fff"/><path d="M33 7c-5-2-9-1-13 2v24c4-3 8-4 13-2z" fill="#fff4fb"/><path d="M12 15c1.5-1 3.5-1 5 0M12 20c1.5-1 3.5-1 5 0" stroke="#c9a8f0" stroke-width="2" stroke-linecap="round"/><circle cx="26.5" cy="17" r="4" fill="#ffb3d1"/></svg>`;
 const ISLAND = `<svg viewBox="0 0 40 40"><ellipse cx="20" cy="30" rx="16" ry="5" fill="#8fd8f0"/><ellipse cx="20" cy="27" rx="12" ry="5" fill="#ffe2b0"/><ellipse cx="20" cy="25" rx="9" ry="3.5" fill="#bfeaa0"/><path d="M19 25c0-6 1-11 3-14" stroke="#c98d58" stroke-width="2.4" fill="none" stroke-linecap="round"/><path d="M22 11c-4-2-8-1-9 2 3-1 6 0 9-2zM22 11c3-3 8-3 9 0-3-1-6 0-9 0zM22 11c1 3 0 6-3 8 1-3 1-6 3-8z" fill="#7fc65a"/></svg>`;
 const HAT = `<svg viewBox="0 0 40 40"><path d="M8 29c0-8 5-17 12-17s12 9 12 17z" fill="#fff"/><path d="M5 29h30c0 3-6 4-15 4S5 32 5 29z" fill="#fff6e0"/><path d="M9 24h22" stroke="#ff7fb0" stroke-width="4"/><circle cx="20" cy="10" r="4" fill="#ff7fb0"/></svg>`;
@@ -306,6 +327,14 @@ export interface UiHandlers {
   moveLink(): Promise<string>;
   /** Squishies from another phone's link or code: how many were new, or null when it isn't a good code. */
   bringIn(text: string): Promise<number | null>;
+  /** Send a friend a twin of `id` (from its card in the Book). */
+  share(id: string): void;
+  /** Gifts waiting in the squishy inbox. */
+  mail(): number;
+  /** Open the next gift in the inbox. */
+  openMail(): void;
+  /** A squishy link pasted into the Book: what to tell the kid. */
+  receive(text: string): string;
 }
 
 export interface BabyInfo {
@@ -342,6 +371,10 @@ export interface CardInfo {
   mood?: MoodId;
   /** It just grew up from a baby. */
   grew?: boolean;
+  /** It came in the mail from a friend. */
+  arrived?: boolean;
+  /** The hat it came wearing, when that hat is new to you. */
+  cameWith?: string;
 }
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -369,6 +402,7 @@ export class Ui {
   private jobsEl: HTMLElement;
   private cookiesEl: HTMLElement;
   private hatsDot: HTMLElement;
+  private mailDot: HTMLElement;
 
   constructor(
     private h: UiHandlers,
@@ -393,7 +427,7 @@ export class Ui {
         <div class="plank"></div>
         <div class="shelf"></div>
         <div class="nav">
-          <button class="book-btn"><span class="ico">${BOOK}</span>Book</button>
+          <button class="book-btn"><span class="ico">${BOOK}<i class="dot"></i></span>Book</button>
           <button class="hats-btn"><span class="ico">${HAT}<i class="dot"></i></span>Hats</button>
           <button class="open"><span class="ico">${GIFT}<span class="badge">0</span></span>Open</button>
           <button class="places-btn"><span class="ico">${PLACE}</span>Places</button>
@@ -429,6 +463,7 @@ export class Ui {
     this.jobsEl = q(".jobs");
     this.cookiesEl = q(".cookies");
     this.hatsDot = q(".hats-btn .dot");
+    this.mailDot = q(".book-btn .dot");
     q(".hats-btn").addEventListener("click", () => this.hatsSheet());
     q(".places-btn").addEventListener("click", () => this.placesSheet());
     this.sheetEl.addEventListener("click", (e) => {
@@ -745,6 +780,82 @@ export class Ui {
         else requestAnimationFrame(off);
       };
       requestAnimationFrame(off);
+    });
+  }
+
+  /** A dot on the Book button while squishy mail waits. */
+  setMail(n: number): void {
+    this.mailDot.classList.toggle("on", n > 0);
+  }
+
+  /**
+   * The squishy is packed in its box: a QR code and a link for the friend. Resolves true once it is sent off
+   * (shared, or "Send it off!"), false to unpack it.
+   */
+  shareSheet(name: string, link: string): Promise<boolean> {
+    let qr = "";
+    try {
+      const q = qrcode(0, "M");
+      q.addData(link);
+      q.make();
+      qr = q.createSvgTag({ cellSize: 4, margin: 4, scalable: true });
+    } catch {
+      qr = "";
+    }
+    const panel = this.openSheet(
+      `<div class="move gift"><h1>Send ${esc(name)} to a friend</h1>
+       <div class="sub">Your friend gets a twin. ${esc(name)} stays with you too!</div>
+       ${qr ? `<div class="qr" role="img" aria-label="QR code for the squishy link">${qr}</div>` : ""}
+       <div class="tip">Let your friend scan this with their phone's camera, or ask a grown-up to send them the link.</div>
+       <div class="btns">${"share" in navigator ? `<button class="big alt share">Share link</button>` : ""}<button class="big alt copy">Copy link</button></div>
+       <div class="btns"><button class="big off">Send it off!</button></div></div>`,
+    );
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = (v: boolean) => {
+        if (done) return;
+        done = true;
+        if (this.sheetEl.classList.contains("on")) this.closeSheet();
+        resolve(v);
+      };
+      panel.querySelector(".share")?.addEventListener("click", () => {
+        void navigator
+          .share({ title: "A squishy for you!", text: `A squishy is coming to you in Aurora's World!`, url: link })
+          .then(() => finish(true))
+          .catch(() => {});
+      });
+      const copy = panel.querySelector<HTMLButtonElement>(".copy")!;
+      copy.addEventListener("click", () => {
+        void navigator.clipboard
+          ?.writeText(link)
+          .then(() => (copy.textContent = "Copied!"))
+          .catch(() => this.toast("Couldn't copy. Use Share instead.", 1800));
+      });
+      panel.querySelector(".off")!.addEventListener("click", () => finish(true));
+      panel.querySelector(".close")!.addEventListener("click", () => finish(false));
+      // Closed any other way (a tap outside, Escape): unpack it.
+      const off = () => {
+        if (!this.sheetEl.classList.contains("on")) finish(false);
+        else if (!done) requestAnimationFrame(off);
+      };
+      requestAnimationFrame(off);
+    });
+  }
+
+  /** For a squishy link that opened somewhere else: paste it in. */
+  pasteSheet(): void {
+    const panel = this.openSheet(
+      `<div class="move"><h1>Got a squishy link?</h1>
+       <div class="sub">Paste the link a friend sent you.</div>
+       <textarea aria-label="Squishy link" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
+       <div class="btns"><button class="big in">Get my squishy</button></div></div>`,
+    );
+    const input = panel.querySelector("textarea") as HTMLTextAreaElement;
+    panel.querySelector(".in")!.addEventListener("click", () => {
+      const said = this.h.receive(input.value);
+      this.closeSheet();
+      this.closeBook();
+      this.toast(said, 2400);
     });
   }
 
@@ -1151,13 +1262,15 @@ export class Ui {
       <div class="card">
         <div class="no">#${def.no}</div>
         ${info.grew ? `<div class="grew">All grown up!</div>` : info.isNew ? `<div class="new">New!</div>` : ""}
+        ${info.arrived ? `<div class="arrived">Your squishy has arrived!</div>` : ""}
         <img alt="">
         <div class="name"><input maxlength="${NAME_MAX}" enterkeyhint="done" aria-label="Name"><span class="pen">${PEN}</span></div>
         <div class="kind">${esc(def.design)} · ${esc(kind)}</div>
         <div class="chips"><span>${mood.icon} ${esc(mood.name)}</span><span class="feel">${esc(feelWord(def.soft))}</span></div>
         <div class="mood">${esc(mood.about)}</div>
+        ${info.cameWith ? `<div class="came">It came wearing a ${esc(info.cameWith)}!</div>` : ""}
         ${info.stars ? `<div class="repeat">You have this one! +${info.stars} stars</div>` : ""}
-        <div class="btns">${info.fromBook ? `<button class="big alt hold">Hold</button>` : ""}<button class="big yay">${info.fromBook ? "Close" : "Yay!"}</button></div>
+        <div class="btns${info.fromBook ? " three" : ""}">${info.fromBook ? `<button class="big alt hold">Hold</button><button class="big send">${GIFT_SM}Share</button>` : ""}<button class="big yay">${info.fromBook ? "Close" : "Yay!"}</button></div>
       </div>`;
     const img = this.modal.querySelector("img")!;
     this.thumbs.want(def.id, (url) => (img.src = url));
@@ -1187,6 +1300,11 @@ export class Ui {
         this.closeBook();
         this.h.hold(def.id);
       });
+      this.modal.querySelector(".send")?.addEventListener("click", () => {
+        this.closeCard();
+        this.closeBook();
+        this.h.share(def.id);
+      });
     });
   }
 
@@ -1204,6 +1322,12 @@ export class Ui {
     const found = CATALOG.filter((d) => owned[d.id]).length;
     // The way out sits in the sticky header, so it is there however far down you scroll.
     let html = `<div class="head"><button class="back" aria-label="Back">${BACK}</button><h1>Squishy Book</h1><div class="found">You found ${found} of ${CATALOG.length}!</div></div>`;
+    const mail = this.h.mail();
+    html += `<div class="mailbox">
+      <div class="mtop"><span class="mico">${MAILBOX}${mail ? `<span class="badge">${mail}</span>` : ""}</span>
+        <div class="mtxt"><b>Squishy mail</b><small>${mail ? `${mail === 1 ? "A squishy is" : `${mail} squishies are`} waiting for you!` : found ? "Tap a squishy, then Share to send a friend a twin." : "Find a squishy to share it with a friend."}</small></div>
+        ${mail ? `<button class="mopen">Open</button>` : ""}</div>
+      <button class="mpaste">Got a squishy link? Paste it here</button></div>`;
     for (const fam of FAMILIES) {
       const defs = CATALOG.filter((d) => d.family === fam.id);
       const got = defs.filter((d) => owned[d.id]).length;
@@ -1219,6 +1343,11 @@ export class Ui {
     this.coverChanged();
     this.bookEl.querySelector(".back")!.addEventListener("click", () => this.closeBook());
     this.bookEl.querySelector(".done")!.addEventListener("click", () => this.closeBook());
+    this.bookEl.querySelector(".mopen")?.addEventListener("click", () => {
+      this.closeBook();
+      this.h.openMail();
+    });
+    this.bookEl.querySelector(".mpaste")!.addEventListener("click", () => this.pasteSheet());
     for (const cell of this.bookEl.querySelectorAll<HTMLButtonElement>(".cell")) {
       const id = cell.dataset.id!;
       const img = cell.querySelector("img")!;

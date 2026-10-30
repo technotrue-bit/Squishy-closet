@@ -81,6 +81,8 @@ export interface Stage {
   homeBox: THREE.Group;
   /** Shows the opening basket (and its shadow) or hides it. */
   showBasket(on: boolean): void;
+  /** The opening basket's shadow on the floor, for when the basket flies. */
+  basketShadow: THREE.Mesh;
   /** Pushes the fog back to suit how far away the camera is. */
   setViewDistance(d: number): void;
   /** Soft shadow that follows the squishy when it leaves the basket. */
@@ -126,7 +128,7 @@ export function buildStage(renderer?: THREE.WebGLRenderer): Stage {
   const shadowMat = new THREE.MeshBasicMaterial({ map: shadowTex(), transparent: true, depthWrite: false });
 
   const { basket, lid } = steamer(wallMat, floorMat, rimMat);
-  const basketShadow = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 3.4), shadowMat);
+  const basketShadow = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 3.4), shadowMat.clone());
   basketShadow.rotation.x = -Math.PI / 2;
   basketShadow.position.y = 0.004;
   scene.add(basketShadow);
@@ -186,7 +188,7 @@ export function buildStage(renderer?: THREE.WebGLRenderer): Stage {
     viewD = d;
     fitFog();
   };
-  return { scene, basket, homeBox, showBasket, setViewDistance, shadow, lid, shadowMat, setPlace };
+  return { scene, basket, homeBox, showBasket, basketShadow, setViewDistance, shadow, lid, shadowMat, setPlace };
 }
 
 /** A bamboo steamer basket with its lid leaning on its edge behind it. */

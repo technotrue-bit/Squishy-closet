@@ -119,7 +119,7 @@ describe("save", () => {
 
   it("gives old squishies the personality on their design, and a first cookie", () => {
     const s = parseSave(JSON.stringify({ v: 3, owned: { "bao-rosy-matte": { got: 5 } }, tutorial: "done", team: [] }));
-    expect(s.v).toBe(4);
+    expect(s.v).toBe(SAVE_VERSION);
     expect(s.owned["bao-rosy-matte"].mood).toMatch(/^[a-z]+$/);
     expect(s.cookies).toBe(1);
     expect(s.babies).toEqual([]);
