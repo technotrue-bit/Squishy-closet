@@ -7,7 +7,7 @@ hooking up real payment.
 
 | | Free | Full game |
 | --- | --- | --- |
-| Places | Tea Table, Sunny Beach | + Sailing Boat, Living Room, Little City |
+| Places | Living Room, Sunny Beach (new players in the free game start in Living Room) | + Tea Table, Sailing Boat, Little City |
 | Squishies in boxes and naps | Matte and shiny ones (30), Halloween Specials from Spooky Boxes | + every glitter, glow and gold one (36 more) |
 | Hats | Everything except the hats friends find in the locked places | All of them |
 

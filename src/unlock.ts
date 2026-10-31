@@ -26,8 +26,8 @@ const BUILT_AT = typeof __BUILT_AT__ === "number" ? __BUILT_AT__ : 0;
  */
 export const SELLING_FROM: number | null = null;
 
-/** The places anyone can play in. */
-export const FREE_PLACES: readonly PlaceId[] = ["table", "beach"];
+/** The places anyone can play in. The first is where a new player in the free game starts. */
+export const FREE_PLACES: readonly PlaceId[] = ["room", "beach"];
 
 export const UNLOCK_KEY = `${PREFIX}unlock`;
 

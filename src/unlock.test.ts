@@ -54,7 +54,8 @@ describe("full game unlock", () => {
   });
 
   it("frees two places and locks the rest", () => {
-    expect(FREE_PLACES).toHaveLength(2);
+    expect(FREE_PLACES).toEqual(["room", "beach"]);
+    expect(placeOpen("table", false)).toBe(false);
     for (const id of FREE_PLACES) expect(placeOpen(id, false)).toBe(true);
     const locked = PLACE_IDS.filter((id) => !placeOpen(id, false));
     expect(locked).toHaveLength(PLACE_IDS.length - 2);

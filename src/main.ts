@@ -578,7 +578,7 @@ function wearHat(id: string | null): void {
 
 let placeId: PlaceId = save.place;
 function goPlace(id: PlaceId, quiet = false): void {
-  // A place outside this phone's game (the free game has two) goes to the first free one.
+  // A place outside this phone's game (the free game has two) goes to the first free one, Living Room.
   if (!placeOpen(id, hasFull(save.owned))) id = FREE_PLACES[0];
   placeId = id;
   save.place = id;
