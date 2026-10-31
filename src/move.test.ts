@@ -100,4 +100,9 @@ describe("move to a new phone", () => {
     expect(moveLink("a1abc", here, "https://evil.example/", true)).toBe("https://squishy-closet.vercel.app/#move=a1abc");
     expect(moveLink("a1abc", here, "https://trueaigaming.com/", false)).toBe("https://squishy-closet.vercel.app/#move=a1abc");
   });
+
+  it("points links made in the iPhone app at the site's play page", () => {
+    const app = { origin: "capacitor://localhost", pathname: "/" };
+    expect(moveLink("a1abc", app, "", false)).toBe("https://trueaigaming.com/play.html?id=squishy-closet#move=a1abc");
+  });
 });

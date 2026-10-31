@@ -21,7 +21,7 @@ const CSS = `
 .ui .layer.on { display: block; }
 .ui .round { width: 50px; height: 50px; border-radius: 25px; background: rgba(255,255,255,0.8); box-shadow: 0 3px 0 rgba(200,110,150,0.35); display: grid; place-items: center; }
 .ui .round:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(200,110,150,0.35); }
-.ui .gear { position: absolute; z-index: 3; top: calc(env(safe-area-inset-top) + 10px); right: 12px; }
+.ui .gear { position: absolute; z-index: 3; top: calc(env(safe-area-inset-top) + 10px); right: calc(env(safe-area-inset-right) + 12px); }
 
 .ui .title .logo { position: absolute; top: calc(env(safe-area-inset-top) + 9vh); left: 0; right: 0; text-align: center; font-weight: 900; font-size: min(13vw, 64px); line-height: 0.95; color: #fff; text-shadow: 0 4px 0 #e86fa3, 0 8px 22px rgba(180,60,120,0.35); transform: rotate(-3deg); }
 .ui .title .logo small { display: block; font-size: 0.36em; margin-top: 10px; color: #fff; text-shadow: 0 2px 0 #b98ae8; transform: rotate(3deg); }
@@ -29,13 +29,13 @@ const CSS = `
 .ui .play:active { transform: translateX(-50%) translateY(5px); box-shadow: 0 2px 0 #c2346c; }
 @keyframes bob { 0%,100% { margin-bottom: 0; } 50% { margin-bottom: 8px; } }
 
-.ui .love { position: absolute; top: calc(env(safe-area-inset-top) + 12px); left: 12px; display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.8); padding: 6px 10px 6px 6px; border-radius: 999px; box-shadow: 0 3px 0 rgba(200,110,150,0.3); }
+.ui .love { position: absolute; top: calc(env(safe-area-inset-top) + 12px); left: calc(env(safe-area-inset-left) + 12px); display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.8); padding: 6px 10px 6px 6px; border-radius: 999px; box-shadow: 0 3px 0 rgba(200,110,150,0.3); }
 .ui .love .heart { width: 34px; height: 34px; transition: transform 0.2s; flex: none; }
 .ui .love .heart.beat { transform: scale(1.35); }
 .ui .love .bar { width: min(34vw, 150px); height: 16px; border-radius: 8px; background: #ffe0ec; overflow: hidden; }
 .ui .love .fill { height: 100%; width: 0%; border-radius: 8px; background: linear-gradient(90deg, #ff8fb8, #ff4f8d); transition: width 0.35s cubic-bezier(.3,1.6,.5,1); }
 .ui .love .gift { width: 30px; height: 30px; flex: none; }
-.ui .pills { position: absolute; top: calc(env(safe-area-inset-top) + 66px); left: 14px; display: flex; gap: 6px; }
+.ui .pills { position: absolute; top: calc(env(safe-area-inset-top) + 66px); left: calc(env(safe-area-inset-left) + 14px); display: flex; gap: 6px; }
 .ui .stars { display: flex; align-items: center; gap: 4px; font-weight: 900; font-size: 16px; color: #d48a00; background: rgba(255,255,255,0.7); padding: 3px 10px 3px 5px; border-radius: 999px; }
 .ui .stars svg { width: 22px; height: 22px; }
 
@@ -102,9 +102,9 @@ const CSS = `
 .ui .wishplay.bye { animation: fadeAway 0.35s ease-in forwards; pointer-events: none; }
 @keyframes fadeAway { to { opacity: 0; } }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-.ui .wishplay .close { position: absolute; top: calc(env(safe-area-inset-top) + 12px); right: 12px; z-index: 3; }
+.ui .wishplay .close { position: absolute; top: calc(env(safe-area-inset-top) + 12px); right: calc(env(safe-area-inset-right) + 12px); z-index: 3; }
 .ui.framed .wishplay .close { top: calc(env(safe-area-inset-top) + 64px); }
-.ui .wishplay h1 { position: absolute; left: 16px; right: 70px; top: calc(env(safe-area-inset-top) + 16px); margin: 0; font-size: 28px; font-weight: 900; color: #e2508c; line-height: 1.1; }
+.ui .wishplay h1 { position: absolute; left: calc(env(safe-area-inset-left) + 16px); right: 70px; top: calc(env(safe-area-inset-top) + 16px); margin: 0; font-size: 28px; font-weight: 900; color: #e2508c; line-height: 1.1; }
 .ui.framed .wishplay h1 { top: calc(env(safe-area-inset-top) + 66px); }
 .ui .wishplay .how { position: absolute; left: 16px; right: 16px; bottom: calc(env(safe-area-inset-bottom) + 64px); text-align: center; font-weight: 900; font-size: 20px; color: #a0607f; }
 .ui .wishplay .dots { position: absolute; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom) + 28px); display: flex; justify-content: center; gap: 8px; }

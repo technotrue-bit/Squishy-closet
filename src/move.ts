@@ -6,7 +6,7 @@
 
 import { BABIES_MAX, COOKIES_MAX } from "./babies";
 import { LOVE_PER_BOX, parseSave, type Save } from "./save";
-import { isSite } from "./site";
+import { isSite, PLAY_PAGE } from "./site";
 
 /** Starts every code, so a pasted link or a bare code both work and nothing else is mistaken for one. */
 const ROWS = "a2";
@@ -166,6 +166,8 @@ export function moveLink(code: string, here: { origin: string; pathname: string 
       // No referrer: link to the game itself.
     }
   }
+  // In the iPhone app the game's address (capacitor://localhost) means nothing on another phone: use the site.
+  if (!/^https?:\/\//.test(here.origin)) return `${PLAY_PAGE}${HASH}${code}`;
   return `${here.origin}${here.pathname}${HASH}${code}`;
 }
 

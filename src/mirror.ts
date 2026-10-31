@@ -97,7 +97,20 @@ export async function startMirror(): Promise<void> {
   const send = (key: string, value: string | null) => {
     if (key.startsWith(PREFIX)) window.parent.postMessage({ type: "tag:put", game: GAME, v: 1, key, value }, reply.site);
   };
-  // Every write goes through these two, whichever part of the game makes it.
+  watchWrites(store, shim, send);
+  // Whatever the page didn't have yet (a first visit, or a save made before this), so its copy is whole.
+  for (let i = 0; i < store.length; i++) {
+    const key = store.key(i);
+    const value = key === null ? null : store.getItem(key);
+    if (key && value !== null) send(key, value);
+  }
+}
+
+/**
+ * Calls `send` after every write to `store`, whichever part of the game makes it. `shim` is true when `store` is the
+ * stand-in from memory() rather than the browser's own storage. Also used by the app (native.ts).
+ */
+export function watchWrites(store: Storage, shim: boolean, send: (key: string, value: string | null) => void): void {
   if (!shim) {
     const proto = Storage.prototype;
     const protoSet = proto.setItem;
@@ -121,11 +134,5 @@ export async function startMirror(): Promise<void> {
       remove(key);
       send(String(key), null);
     };
-  }
-  // Whatever the page didn't have yet (a first visit, or a save made before this), so its copy is whole.
-  for (let i = 0; i < store.length; i++) {
-    const key = store.key(i);
-    const value = key === null ? null : store.getItem(key);
-    if (key && value !== null) send(key, value);
   }
 }
