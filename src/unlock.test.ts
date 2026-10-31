@@ -15,16 +15,21 @@ const memory = () => {
 };
 
 describe("full game unlock", () => {
-  it("locks nothing on the live site or in the app until selling starts", () => {
+  it("locks nothing in the app until selling starts", () => {
     expect(SELLING_FROM).toBeNull();
-    expect(locksFrom(null, false, 123)).toBeNull();
+    expect(locksFrom(null, false, 123, true)).toBeNull();
     expect(fullWhy({}, null, null)).toBe("open");
   });
 
-  it("locks preview builds from when they were built, and the live game from when selling starts", () => {
-    expect(locksFrom(null, true, 500)).toBe(500);
-    expect(locksFrom(900, true, 500)).toBe(900);
-    expect(locksFrom(900, false, 500)).toBe(900);
+  it("never locks the live website, even once the app sells the full game", () => {
+    expect(locksFrom(null, false, 123, false)).toBeNull();
+    expect(locksFrom(900, false, 123, false)).toBeNull();
+  });
+
+  it("locks the app from when selling starts, and preview builds from when they were built", () => {
+    expect(locksFrom(900, false, 500, true)).toBe(900);
+    expect(locksFrom(null, true, 500, false)).toBe(500);
+    expect(locksFrom(900, true, 500, false)).toBe(900);
   });
 
   it("keeps the whole game for anyone who found a squishy before the locks started", () => {

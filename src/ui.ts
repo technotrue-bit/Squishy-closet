@@ -1073,7 +1073,16 @@ export class Ui {
         return;
       }
       if (r.why === "cancelled") return;
-      this.toast(r.why === "none" ? "No earlier purchase found." : r.why === "not-ready" ? "Buying isn't set up yet." : "That didn't go through. Try again later.", 2000);
+      this.toast(
+        r.why === "none"
+          ? "No earlier purchase found."
+          : r.why === "not-ready"
+            ? "Buying isn't set up yet."
+            : r.why === "pending"
+              ? "Waiting for approval. The game opens up when it comes."
+              : "That didn't go through. Try again later.",
+        2400,
+      );
     };
     panel.querySelector(".testbuy")?.addEventListener("click", async () => done(await this.h.buyFull(true)));
     panel.querySelector(".restore")!.addEventListener("click", async () => done(await this.h.restoreFull()));

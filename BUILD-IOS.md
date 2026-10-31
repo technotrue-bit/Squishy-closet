@@ -76,7 +76,7 @@ None of these is set up yet.
   for squishy mail and moving to a new phone open the share sheet, so in Kids they need that check too.
 - **Payments.** The app has no Ko-fi or other outside payment link: the site's tip link sits on the site's play page
   around the game, which the app doesn't include. Any tip jar or extras in the app must use Apple's in-app purchases.
-  The full game unlock is built (`src/unlock.ts`); the Apple purchase slot to fill is `apple` in `src/payments.ts`, and PAYMENTS.md has the choices.
+  The full game is sold with an Apple in-app purchase (`src/apple.ts`, cordova-plugin-purchase); PAYMENTS.md lists what to set up in App Store Connect.
 - **Accounts.** The app has no sign-in and nothing leaves the device. If it ever offers the site's accounts or cloud
   saves, it needs Sign in with Apple next to any other sign-in, and a way to delete the account inside the app.
 - **Privacy.** A privacy policy URL, and the App Privacy answers in App Store Connect (today: no data collected).

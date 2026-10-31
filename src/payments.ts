@@ -1,12 +1,12 @@
-// Buying the full game. One shape for every way to pay, so hooking up a real one only means filling in a Shop:
-// Apple's in-app purchase inside the iPhone and iPad app, and a web payment on the site. None is hooked up yet
-// (PAYMENTS.md has the choices). Until one is, nothing can be bought: the live game shows no locks (see unlock.ts),
-// and preview builds offer a test unlock instead.
+// Buying the full game. One shape for every way to pay: Apple's in-app purchase inside the iPhone and iPad app
+// (apple.ts). The website sells nothing and locks nothing (see unlock.ts); preview builds offer a test unlock instead.
 
+import { appleShop } from "./apple";
 import { inApp } from "./native";
 import { TEST_BUILD, type UnlockHow } from "./unlock";
 
-export type BuyResult = { ok: true; how: UnlockHow } | { ok: false; why: "cancelled" | "not-ready" | "failed" | "none" };
+/** "pending": Apple is waiting on a grown-up's approval (Ask to Buy); the game opens when it comes. */
+export type BuyResult = { ok: true; how: UnlockHow } | { ok: false; why: "cancelled" | "not-ready" | "failed" | "none" | "pending" };
 
 export interface Shop {
   /** Can it sell right now (the store answered and the product exists)? */
@@ -26,18 +26,9 @@ export const notReady: Shop = {
   restore: async () => ({ ok: false, why: "not-ready" }),
 };
 
-/**
- * Apple in-app purchase, for the app. To hook up: add a StoreKit plugin (PAYMENTS.md), create the non-consumable
- * product in App Store Connect, and fill these in. Kept as notReady until then.
- */
-const apple: Shop = notReady;
-
-/** A web payment, for the site. To hook up: see PAYMENTS.md. Kept as notReady until then. */
-const web: Shop = notReady;
-
-/** The shop for where the game is running. */
+/** The shop for where the game is running: Apple in the app, nothing on the website. */
 export function shop(): Shop {
-  return inApp() ? apple : web;
+  return inApp() ? appleShop : notReady;
 }
 
 /** Only in preview builds: unlocks straight away, so the unlock screen can be tried end to end. */

@@ -76,6 +76,8 @@ import { wishFor, wishWords } from "./wishes";
 import { careGame, doCare, doneToday, leftToday, type CareId } from "./care";
 import { clearTestUnlock, FREE_PLACES, fullWhy, hasFull, locksOn, placeOpen, squishyOpen, TEST_BUILD, writeUnlock } from "./unlock";
 import { shop, testShop, type BuyResult } from "./payments";
+import { watchApple } from "./apple";
+import { inApp } from "./native";
 
 const app = document.getElementById("app")!;
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
@@ -602,6 +604,17 @@ function goPlace(id: PlaceId, quiet = false): void {
 
 /** Squishies a box or a nap can bring on this phone: the free game has no sparkly ones. */
 const canFind = (d: SquishyDef): boolean => squishyOpen(d, hasFull(save.owned));
+
+// In the app, once selling has started: a purchase Apple finishes at any time (an approved Ask to Buy, a restore on
+// another screen) opens the game.
+if (inApp() && locksOn()) {
+  watchApple(() => {
+    if (fullWhy(save.owned) === null) {
+      writeUnlock("apple", Date.now());
+      ui.toast("The whole world is open! 🎉", 2200);
+    }
+  });
+}
 
 function fullHandlers(): Pick<UiHandlers, "full" | "shopInfo" | "buyFull" | "restoreFull" | "relock"> {
   const unlocked = (r: BuyResult): BuyResult => {

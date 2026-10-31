@@ -3,14 +3,16 @@
 // squishies (glitter, glow and gold) in boxes and baby naps. Squishies, hats and babies a kid already has are never
 // taken away, whatever the game says about the full game.
 //
-// Nothing is locked on the live site or in the app until selling starts: set SELLING_FROM to that moment (see
-// PAYMENTS.md). Everyone who found a squishy before then keeps the whole game, as an early friend. Preview builds
-// (Vercel previews and `npm run dev`) lock from the moment they were built, so the locks and the unlock screen can be
-// tried there, with a test unlock that only exists in those builds.
+// The full game is sold only in the iPhone and iPad app, through Apple. The website stays fully open: nothing is ever
+// locked there. In the app nothing is locked until selling starts: set SELLING_FROM to that moment (see PAYMENTS.md).
+// Everyone who found a squishy before then (on the site, brought over with a move link) keeps the whole game, as an
+// early friend. Preview builds (Vercel previews and `npm run dev`) lock from the moment they were built, so the locks
+// and the unlock screen can be tried there, with a test unlock that only exists in those builds.
 
 import type { SquishyDef } from "./catalog";
 import type { PlaceId } from "./places";
 import { PREFIX } from "./mirror";
+import { inApp } from "./native";
 
 declare const __TEST_BUILD__: boolean | undefined;
 declare const __BUILT_AT__: number | undefined;
@@ -20,9 +22,9 @@ export const TEST_BUILD = typeof __TEST_BUILD__ === "boolean" && __TEST_BUILD__;
 const BUILT_AT = typeof __BUILT_AT__ === "number" ? __BUILT_AT__ : 0;
 
 /**
- * When the full game goes on sale on the live site and in the app (ms since 1970), or null while it isn't. Set it to
- * the day a real payment is hooked up and shipped, never earlier: anyone who found a squishy before it is an early
- * friend and keeps the whole game.
+ * When the full game goes on sale in the app (ms since 1970), or null while it isn't. Set it to the day the first app
+ * build that sells it goes out (TestFlight or the App Store), never earlier: anyone who found a squishy before it is an
+ * early friend and keeps the whole game. It never locks anything on the website.
  */
 export const SELLING_FROM: number | null = null;
 
@@ -39,10 +41,10 @@ export interface UnlockRecord {
   at: number;
 }
 
-/** The moment the locks start, for this build, or null when nothing is locked. */
-export function locksFrom(selling: number | null = SELLING_FROM, test = TEST_BUILD, builtAt = BUILT_AT): number | null {
-  if (selling !== null) return selling;
-  return test ? builtAt : null;
+/** The moment the locks start, for this build, or null when nothing is locked (always, on the live website). */
+export function locksFrom(selling: number | null = SELLING_FROM, test = TEST_BUILD, builtAt = BUILT_AT, app = inApp()): number | null {
+  if (test) return selling ?? builtAt;
+  return app ? selling : null;
 }
 
 /** Found a squishy before the locks started: keeps the whole game. */
