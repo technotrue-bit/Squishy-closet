@@ -2,6 +2,8 @@
 // little thuds and sparkly chimes, plus bath-time water and a friendly ghostly
 // "ooOOoo" for Halloween. No recordings, no voices.
 
+import { haptic, inApp } from "./native";
+
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
 let enabled = true;
@@ -27,7 +29,18 @@ export function unlockAudio(): void {
     const d = noiseBuf.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
   }
-  if (ctx.state === "suspended") void ctx.resume();
+  // "interrupted" is iPhone's word for audio stopped by a call, an alarm or leaving the app.
+  if (ctx.state !== "running" && ctx.state !== "closed") void ctx.resume();
+}
+
+// In the app, sounds stop the moment it goes to the background and come back when it returns, so nothing keeps
+// squeaking from the home screen or over a phone call.
+if (inApp()) {
+  document.addEventListener("visibilitychange", () => {
+    if (!ctx || ctx.state === "closed") return;
+    if (document.hidden) void ctx.suspend().catch(() => {});
+    else void ctx.resume().catch(() => {});
+  });
 }
 
 function ready(): AudioContext | null {
@@ -348,6 +361,7 @@ export function boo(pitch = 1): void {
 }
 
 export function vibrate(ms: number): void {
+  if (haptic(ms)) return;
   try {
     navigator.vibrate?.(ms);
   } catch {
