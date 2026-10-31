@@ -31,10 +31,11 @@ export interface BoxResult {
 
 /**
  * Picks the squishy in a box. The very first box is always a friendly matte one
- * (a Spooky one in October, half the time).
+ * (a Spooky one in October, half the time). `allow` leaves out squishies that
+ * aren't in this phone's game (the free game has no sparkly ones).
  */
-export function openBox(owned: ReadonlySet<string>, date: Date, rand: () => number, first = false): BoxResult {
-  let pool = CATALOG.filter((d) => d.foundBy.some((f) => f.kind === "box"));
+export function openBox(owned: ReadonlySet<string>, date: Date, rand: () => number, first = false, allow: (d: SquishyDef) => boolean = () => true): BoxResult {
+  let pool = CATALOG.filter((d) => d.foundBy.some((f) => f.kind === "box") && allow(d));
   if (first) pool = pool.filter((d) => d.finish === "matte" && (d.family === "bao" || isOctober(date)));
   const fresh = pool.filter((d) => !owned.has(d.id));
   const from = fresh.length ? fresh : pool;
@@ -50,11 +51,11 @@ const spookyWeight = (d: SquishyDef): number =>
 
 /**
  * Picks the squishy in a Spooky Box, preferring ones you don't have. The first one you open always holds a Halloween
- * Special.
+ * Special. `allow` leaves out squishies that aren't in this phone's game (the free game has no sparkly ones).
  */
-export function openSpookyBox(owned: ReadonlySet<string>, rand: () => number): BoxResult {
-  const specials = CATALOG.filter((d) => d.foundBy.some((f) => f.kind === "spookyBox"));
-  const spooky = CATALOG.filter((d) => d.family === "spooky" && d.foundBy.some((f) => f.kind === "box"));
+export function openSpookyBox(owned: ReadonlySet<string>, rand: () => number, allow: (d: SquishyDef) => boolean = () => true): BoxResult {
+  const specials = CATALOG.filter((d) => d.foundBy.some((f) => f.kind === "spookyBox") && allow(d));
+  const spooky = CATALOG.filter((d) => d.family === "spooky" && d.foundBy.some((f) => f.kind === "box") && allow(d));
   const pool = specials.some((d) => owned.has(d.id)) ? [...specials, ...spooky] : specials;
   const fresh = pool.filter((d) => !owned.has(d.id));
   const def = weightedPick(fresh.length ? fresh : pool, spookyWeight, rand);
