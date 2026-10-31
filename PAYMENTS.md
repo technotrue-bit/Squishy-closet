@@ -36,7 +36,7 @@ unlock, only so the screens can be tried.
 - `src/payments.ts` picks the shop: Apple in the app, nothing on the web.
 - Locked places, the Book's ✨ marks and **Settings → Grown-ups → Full game** (only shown where things are locked) lead
   to a grown-up check (a times question in words, answered by typing the number), then the full game screen. That
-  screen shows Apple's price, Unlock, Restore purchase and the "one payment, no subscription, no ads" note. Kids never
+  screen shows Apple's price, Unlock, Restore purchase and the "one payment, no subscription, no ads" note. The price on the button comes from Apple in the buyer's own money ("Unlock for $2.99"). If Apple hasn't answered yet, the button just reads "Unlock the full game", so no price is written into the game. Kids never
   see a price or a buy button before the check. That covers Apple's parental gate rule for the Kids category. There
   are no timers, no nagging and no "ask your parents" prompts.
 
@@ -54,7 +54,7 @@ unlock, only so the screens can be tried.
 3. Create the app (bundle id from `capacitor.config.ts`, BUILD-IOS.md has the steps).
 4. In the app, **Monetization → In-App Purchases → +**: type **Non-Consumable**, product id
    `com.trueaigaming.aurorasworld.fullgame` (or change `PRODUCT_ID` in `src/apple.ts` to match yours), a reference name
-   like "Full game", a price, and a display name and description, e.g. "Full Game: every place and every sparkly
+   like "Full game", the price **$2.99** (US; Apple fills in the matching price in other countries), and a display name and description, e.g. "Full Game: every place and every sparkly
    squishy". Add a review screenshot of the full game screen.
 5. In Xcode, App target, **Signing & Capabilities → + Capability → In-App Purchase**.
 6. Testing: in App Store Connect, **Users and Access → Sandbox** to make a test Apple Account. On the iPhone, sign in
