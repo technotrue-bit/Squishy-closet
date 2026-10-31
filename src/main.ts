@@ -5,7 +5,8 @@
 // Play at the tea table, the beach, on a sailing boat or in the living room,
 // dress everyone in hats, and give your squishy a bath. All October the places
 // dress up for Halloween; on Halloween itself Spooky Boxes come, jack-o'-lanterns
-// a Halloween squishy pops out of. Everything stays on this device.
+// a Halloween squishy pops out of. Each day the one you hold would love a snack, a bath, a nap and play (care.ts);
+// doing all four brings a small present. Everything stays on this device.
 
 import * as THREE from "three";
 import { Gestures, type GestureEvent } from "./gestures";
@@ -72,6 +73,7 @@ import {
   type Baby,
 } from "./babies";
 import { wishFor, wishWords } from "./wishes";
+import { careGame, doCare, doneToday, leftToday, type CareId } from "./care";
 
 const app = document.getElementById("app")!;
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
@@ -155,7 +157,7 @@ function finishTutorial(): void {
   pointAtOpen = true;
   ui.hint("You earned a box!", "Tap Open to see who's inside");
   sfx.chime(true);
-  ui.setBathReady(true);
+  ui.setCareReady(true);
   refreshSpooky();
 }
 
@@ -181,6 +183,7 @@ function refreshMeters(): void {
   ui.setStars(save.stars);
   ui.setJobs(save.jobs[save.place] ?? 0);
   ui.setCookies(save.cookies);
+  refreshCare();
 }
 
 function giveLove(n: number): void {
@@ -361,6 +364,20 @@ function stepWants(dt: number): void {
   }
 }
 
+/** The happy sound for each step of a little game (and a chime when it's all done). */
+function wishBeat(want: MoodId, pitch: number, done: boolean, n: number): void {
+  if (done) return sfx.chime(true);
+  if (want === "musical") sfx.hum(pitch * (1 + n * 0.12));
+  else if (want === "bouncy" || want === "sporty") sfx.boing(pitch * (1.2 + n * 0.05));
+  else if (want === "sleepy" || want === "calm" || want === "cuddly") sfx.purr(0.4);
+  else if (want === "silly") sfx.giggle(pitch * 1.3);
+  else if (want === "brave") sfx.whoosh();
+  else {
+    sfx.pop();
+    sfx.squeak(pitch * (1.3 + n * 0.08), 0.08, 0.14);
+  }
+}
+
 /** Do what a baby wants: a little game together, then it grows a bit. */
 async function doWish(key: string): Promise<void> {
   const b = save.babies.find((x) => x.key === key);
@@ -373,18 +390,7 @@ async function doWish(key: string): Promise<void> {
     def,
     name: babyName(b),
     want,
-    beat: (done, n) => {
-      if (done) return sfx.chime(true);
-      if (want === "musical") sfx.hum(pitch * (1 + n * 0.12));
-      else if (want === "bouncy" || want === "sporty") sfx.boing(pitch * (1.2 + n * 0.05));
-      else if (want === "sleepy" || want === "calm" || want === "cuddly") sfx.purr(0.4);
-      else if (want === "silly") sfx.giggle(pitch * 1.3);
-      else if (want === "brave") sfx.whoosh();
-      else {
-        sfx.pop();
-        sfx.squeak(pitch * (1.3 + n * 0.08), 0.08, 0.14);
-      }
-    },
+    beat: (done, n) => wishBeat(want, pitch, done, n),
   });
   // It may have grown up while you played.
   if (!did || !save.babies.includes(b)) return;
@@ -1154,7 +1160,8 @@ function setScreen(s: Screen): void {
     refreshMeters();
     refreshShelf();
     refreshSpooky();
-    ui.setBathReady(save.tutorial === "done");
+    ui.setCareReady(save.tutorial === "done");
+    introCare();
     if (tutorialStep()) showTutorial();
     else if (pointAtOpen && save.boxes > 0) ui.hint("You earned a box!", "Tap Open to see who's inside");
     else if (pointAtSpooky && save.spookyBoxes > 0) ui.hint("Happy Halloween!", "Tap the pumpkin to open your Spooky Box");
@@ -1247,7 +1254,9 @@ const ui = new Ui(
       if (screen === "closet" && save.inbox.length) startMail();
     },
     receive: (text) => takeGift(findGift(text), text),
-    openBath: () => startBath(),
+    careInfo: () =>
+      save.active ? { who: nameOf(save, save.active), done: doneToday(save.care, today()), days: save.care.days } : null,
+    care: (id) => void careFor(id),
     closeBath: () => endBath(false),
     openSpooky,
     tray: (down) => {
@@ -1340,6 +1349,77 @@ function endBath(clean: boolean): void {
     persist();
     showNewHat("showerCap");
   }
+  cared("bath");
+}
+
+// ---- daily care -----------------------------------------------------------
+
+/** What each care says when it's done. */
+const CARE_YAY: Record<Exclude<CareId, "bath">, string> = {
+  feed: "is all full! Yum!",
+  nap: "had a cozy nap!",
+  play: "had so much fun!",
+};
+
+function refreshCare(): void {
+  ui.setCare(leftToday(save.care, today()));
+}
+
+/** Once, after learning to play: point out the Care button (and that the bath lives there now). */
+function introCare(): void {
+  if (save.tutorial !== "done" || pointAtOpen || pointAtSpooky || !save.active || save.seen.includes("care")) return;
+  save.seen.push("care");
+  persist();
+  setTimeout(() => {
+    if (screen === "closet" && !ui.busy) ui.toast("New! Tap Care for a snack, a bath, a nap and play 💗", 3200);
+  }, 1200);
+}
+
+/** A snack, a nap or play with the one you hold: a little game together. The bath has its own screen. */
+async function careFor(id: CareId): Promise<void> {
+  sfx.unlockAudio();
+  if (id === "bath") return startBath();
+  if (screen !== "closet" || reveal || ship || bath.on || !save.active) return;
+  if (tutorialStep()) {
+    ui.toast("Finish learning to play first!", 1800);
+    return;
+  }
+  const who = save.active;
+  const def = defById(who);
+  const mood = moodIdOf(who);
+  const wish = careGame(id, mood);
+  if (!def || !wish) return;
+  // The sounds follow the game: munching, a lullaby, or the squishy's own kind of play.
+  const sound: MoodId = id === "feed" ? "sweet" : id === "nap" ? "sleepy" : wish === wishFor(mood) ? mood : "sporty";
+  const pitch = def.pitch;
+  sfx.pop();
+  const did = await ui.wish({ def, name: nameOf(save, who), want: mood, wish, beat: (done, n) => wishBeat(sound, pitch, done, n) });
+  if (!did || screen !== "closet") return;
+  squishy.hello();
+  fx.emit("heart", squishy.topPoint(), 8);
+  ui.toast(`${nameOf(save, who)} ${CARE_YAY[id]}`, 2000);
+  cared(id);
+}
+
+/** One of the day's care things is done: love, and the present when it's the last of the four. */
+function cared(id: CareId): void {
+  const cookies = save.cookies;
+  const stars = save.stars;
+  const res = doCare(save, id, today());
+  persist();
+  refreshCare();
+  if (res.love) giveLove(res.love);
+  if (!res.present) return;
+  const show = async () => {
+    // Wait for any card or game still open (like a new hat) to close first.
+    while (ui.busy) await new Promise((r) => setTimeout(r, 400));
+    sfx.chime(true);
+    fx.emit("sparkle", squishy.topPoint(), 12);
+    await ui.presentCard(save.active ? nameOf(save, save.active) : "your squishy", save.cookies - cookies, save.stars - stars);
+    ui.setCookies(save.cookies, true);
+    ui.setStars(save.stars);
+  };
+  setTimeout(() => void show(), 900);
 }
 
 // ---- fitting the view -------------------------------------------------
@@ -1904,4 +1984,6 @@ if (location.hash.startsWith(HASH) && findGift(location.hash)) {
 
 document.addEventListener("visibilitychange", () => {
   last = performance.now();
+  // Back the next day: four fresh care things.
+  if (!document.hidden && screen === "closet") refreshCare();
 });
