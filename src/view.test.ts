@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import * as THREE from "three";
-import { fitCamera, groundView } from "./view";
+import { TAB_RESERVE, bottomReserve, fitCamera, groundView, trayReserve } from "./view";
 
 const seen = (w: number, h: number) => {
   const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 60);
@@ -32,6 +32,30 @@ describe("what the camera shows of the ground", () => {
         expect(v.inset({ x, z })).toBeLessThan(0);
         expect(v.inset({ x: x * 0.8, z })).toBeGreaterThan(0);
       }
+    }
+  });
+});
+
+describe("sliding the shelf away", () => {
+  it("keeps the full reserve with the shelf up and only the tab's room with it down", () => {
+    for (const h of [390, 844]) {
+      expect(trayReserve(h, 0)).toBe(bottomReserve(h));
+      expect(trayReserve(h, 1)).toBe(TAB_RESERVE);
+      const mid = trayReserve(h, 0.5);
+      expect(mid).toBeLessThan(bottomReserve(h));
+      expect(mid).toBeGreaterThan(TAB_RESERVE);
+    }
+  });
+
+  it("gives the world more of the screen when the shelf is down", () => {
+    const up = new THREE.PerspectiveCamera(34, 1, 0.1, 60);
+    const down = new THREE.PerspectiveCamera(34, 1, 0.1, 60);
+    for (const [w, h] of [[844, 390], [390, 844]]) {
+      fitCamera(up, w, h, 1, 0);
+      fitCamera(down, w, h, 1, 1);
+      // The basket sits lower on the screen, into the room the shelf left.
+      const at = (c: THREE.PerspectiveCamera) => new THREE.Vector3(0, 0, 0).project(c).y;
+      expect(at(down)).toBeLessThan(at(up));
     }
   });
 });

@@ -9,13 +9,27 @@ export const FLY_PLANE_Z = 2.4;
 /** Screen height at the bottom kept for the shelf and buttons. */
 export const bottomReserve = (h: number) => Math.round(Math.min(190, h * 0.24));
 
+/** What's kept at the bottom when the shelf is slid down: just the little pull tab. */
+export const TAB_RESERVE = 40;
+
+/**
+ * The bottom reserve as the shelf slides: `down` 0 is the shelf showing, 1 is
+ * slid away, and in between follows the slide so the world grows smoothly.
+ */
+export const trayReserve = (h: number, down: number): number => {
+  const k = Math.max(0, Math.min(1, down));
+  const full = bottomReserve(h);
+  return Math.round(full + (Math.min(full, TAB_RESERVE) - full) * k);
+};
+
 /**
  * Frames the basket and the place behind it in the screen above the bottom
  * reserve; the reserve still shows the ground, so the shelf and buttons sit on
  * it, not on the bun. `zoom` 1 is the normal view, bigger is closer.
+ * `trayDown` is how far the shelf has slid away (0 to 1): the world gets that room.
  */
-export function fitCamera(camera: THREE.PerspectiveCamera, w: number, fullH: number, zoom = 1): void {
-  const h = fullH - bottomReserve(fullH);
+export function fitCamera(camera: THREE.PerspectiveCamera, w: number, fullH: number, zoom = 1, trayDown = 0): void {
+  const h = fullH - trayReserve(fullH, trayDown);
   camera.aspect = w / h;
   const t = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
   // How much of the world to fit across and up, around the basket.
