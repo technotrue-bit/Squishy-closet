@@ -1,0 +1,14 @@
+import { Ui, type UiHandlers } from "./ui";
+import type { Thumbs } from "./thumbs";
+const pic = (c: string) => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 72 72'><ellipse cx='36' cy='44' rx='28' ry='22' fill='${c}'/></svg>`)}`;
+const thumbs = { want: (_i: string, then: (u: string) => void) => then(pic("#f2a9cf")), wantHat: (_i: string, then: (u: string) => void) => then(pic("#ffd27a")), get: () => undefined, step: () => {} } as unknown as Thumbs;
+const log: string[] = [];
+const h = new Proxy({}, { get: (_t, k) => (...a: unknown[]) => { log.push(`${String(k)}(${a.join(",")})`); (window as unknown as { log: string[] }).log = log; return k === "hats" ? { wearing: null, have: [], who: "" } : k === "mail" ? 0 : undefined; } }) as UiHandlers;
+const ui = new Ui(h, thumbs, true);
+ui.show("closet");
+ui.setShelf(Array.from({ length: 10 }, (_, i) => ({ id: "bao-rosy-matte" + i, state: i === 0 ? "held" : i < 3 ? "out" : "rest", hat: null })));
+ui.setBathReady(true);
+ui.newHat(true);
+ui.setBoxes(1);
+ui.setTray(new URLSearchParams(location.search).has("down"), false);
+(window as unknown as { ui: Ui }).ui = ui;
