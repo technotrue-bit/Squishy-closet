@@ -7,6 +7,7 @@
 import { BABIES_MAX, COOKIES_MAX } from "./babies";
 import { LOVE_PER_BOX, parseSave, type Save } from "./save";
 import { isSite, PLAY_PAGE } from "./site";
+import { combineCare } from "./care";
 
 /** Starts every code, so a pasted link or a bare code both work and nothing else is mistaken for one. */
 const ROWS = "a2";
@@ -138,6 +139,7 @@ export function combineSaves(mine: Save, other: Save): { save: Save; added: numb
   s.spookyBoxes = Math.max(s.spookyBoxes, other.spookyBoxes);
   s.spookyYear = Math.max(s.spookyYear, other.spookyYear);
   s.baths = Math.max(s.baths, other.baths);
+  s.care = combineCare(s.care, other.care);
   for (const [place, n] of Object.entries(other.jobs)) s.jobs[place] = Math.max(s.jobs[place] ?? 0, n);
   for (const g of other.inbox) if (!s.inbox.some((x) => x.key === g.key)) s.inbox.push({ ...g });
   s.giftsGot = union(s.giftsGot, other.giftsGot);

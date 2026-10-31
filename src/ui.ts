@@ -10,7 +10,8 @@ import { HATS, type HatDef } from "./hats";
 import { PLACES, type PlaceId } from "./places";
 import { LOVE_PER_BOX, NAME_MAX, ZOOM_MAX, ZOOM_MIN } from "./save";
 import { LESSONS, moodById, type Mood, type MoodId } from "./personality";
-import { wishFor, wishWords } from "./wishes";
+import { wishFor, wishWords, type Wish } from "./wishes";
+import { CARE_IDS, CARE_INFO, PRESENT_COOKIES, PRESENT_STARS, type CareId } from "./care";
 import type { Thumbs } from "./thumbs";
 import qrcode from "qrcode-generator";
 
@@ -282,8 +283,24 @@ const CSS = `
 .ui .float-btn .ico { width: 56px; height: 56px; border-radius: 28px; display: grid; place-items: center; position: relative; }
 .ui .float-btn .ico svg { width: 40px; height: 40px; }
 .ui .float-btn:active .ico { transform: translateY(2px); }
-.ui .bath-btn { right: 8px; }
-.ui .bath-btn .ico { background: linear-gradient(180deg, #bff0ff, #6fcff5); box-shadow: 0 4px 0 #2a9ac4; }
+.ui .care-btn { right: 8px; }
+.ui .care-btn .ico { background: linear-gradient(180deg, #ffc9de, #ff86b4); box-shadow: 0 4px 0 #d9548a; }
+.ui .care-btn .badge { position: absolute; top: -6px; right: -6px; min-width: 24px; height: 24px; padding: 0 6px; box-sizing: border-box; border-radius: 12px; background: #fff; color: #e2508c; font-size: 15px; font-weight: 900; display: grid; place-items: center; box-shadow: 0 2px 0 #f3b3cf; }
+.ui .care-btn.all .badge { background: #bdf0c8; color: #2d7a43; box-shadow: 0 2px 0 #8fd1a0; }
+.ui .sheet .care { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.ui .sheet .care button { position: relative; border-radius: 24px; background: #fff; box-shadow: 0 4px 0 #f3c6da; padding: 14px 6px 12px; display: flex; flex-direction: column; align-items: center; gap: 4px; font-weight: 900; font-size: 19px; color: #e2508c; }
+.ui .sheet .care button > i { font-style: normal; font-size: 46px; line-height: 1.1; }
+.ui .sheet .care button small { font-size: 13px; font-weight: 800; color: #a0607f; }
+.ui .sheet .care button:active { transform: translateY(2px); box-shadow: 0 2px 0 #f3c6da; }
+.ui .sheet .care button.done { background: #effbf1; box-shadow: 0 4px 0 #bfe6c8; color: #2d7a43; }
+.ui .sheet .care button.done small { color: #4f9a63; }
+.ui .sheet .care button.done::after { content: "✓"; position: absolute; top: 8px; right: 10px; width: 26px; height: 26px; border-radius: 13px; background: #5cc27a; color: #fff; font-size: 17px; display: grid; place-items: center; }
+.ui .sheet .present { display: flex; align-items: center; gap: 10px; margin-top: 14px; padding: 10px 14px; border-radius: 20px; background: linear-gradient(180deg, #fff6c9, #ffe58a); box-shadow: 0 3px 0 #e8c24e; font-weight: 900; font-size: 15px; color: #8a5a00; line-height: 1.25; }
+.ui .sheet .present > i { font-style: normal; font-size: 32px; }
+.ui .sheet .present.got { background: #effbf1; box-shadow: 0 3px 0 #bfe6c8; color: #2d7a43; }
+.ui .card .big-ico { font-size: 92px; line-height: 1.1; margin: 8px 0 2px; animation: wiggle 1.4s ease-in-out 2; }
+.ui .card .loot { display: flex; justify-content: center; gap: 10px; margin: 12px 0 16px; }
+.ui .card .loot span { padding: 8px 14px; border-radius: 999px; background: #fff3d1; color: #9a6400; font-weight: 900; font-size: 20px; }
 .ui .spooky-btn { left: 8px; }
 .ui .spooky-btn .ico { background: linear-gradient(180deg, #ffc37a, #ff8a1f); box-shadow: 0 4px 0 #c25a0a; }
 .ui .spooky-btn.ready .ico { animation: wiggle 1.2s ease-in-out infinite; box-shadow: 0 4px 0 #c25a0a, 0 0 18px 4px rgba(255,170,60,0.75); }
@@ -320,7 +337,7 @@ const HAT = `<svg viewBox="0 0 40 40"><path d="M8 29c0-8 5-17 12-17s12 9 12 17z"
 const PLACE = `<svg viewBox="0 0 40 40"><path d="M4 27c5-3 9 3 16 0s11 3 16 0v7H4z" fill="#fff"/><path d="M20 6v18" stroke="#fff6e0" stroke-width="2.5"/><path d="M21 7l10 15H21z" fill="#fff"/><path d="M19 10l-8 12h8z" fill="#ffe0ec"/><path d="M10 24h20l-3 4H13z" fill="#ffd27a"/></svg>`;
 const GEAR = `<svg width="28" height="28" viewBox="0 0 28 28"><path d="M14 4l2 .3.7 2.4 2 1 2.3-1 1.6 1.6-1 2.3 1 2 2.4.7v2.3l-2.4.7-1 2 1 2.3-1.6 1.6-2.3-1-2 1-.7 2.4h-2.3l-.7-2.4-2-1-2.3 1L6.4 21l1-2.3-1-2L4 16v-2.3l2.4-.7 1-2-1-2.3L8 7.1l2.3 1 2-1L13 4.3z" fill="#e2508c"/><circle cx="14" cy="14.8" r="4" fill="#fff"/></svg>`;
 const JOBS = `<svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="19" rx="4" fill="#8fdcff"/><rect x="8" y="1.5" width="8" height="4" rx="2" fill="#2a86c4"/><path d="M8 13l3 3 5-6" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-const TUB = `<svg viewBox="0 0 40 40"><circle cx="13" cy="9" r="4" fill="#fff" opacity=".9"/><circle cx="20" cy="6" r="2.5" fill="#fff" opacity=".8"/><circle cx="26" cy="11" r="3" fill="#fff" opacity=".85"/><path d="M4 19h32c0 8-5 12-16 12S4 27 4 19z" fill="#fff"/><path d="M4 19h32" stroke="#ffc6df" stroke-width="3" stroke-linecap="round"/><circle cx="14" cy="19" r="4" fill="#fff"/><circle cx="21" cy="17" r="5" fill="#fff"/><circle cx="28" cy="19" r="3.5" fill="#fff"/><path d="M10 31l-2 4M30 31l2 4" stroke="#ffd27a" stroke-width="3" stroke-linecap="round"/></svg>`;
+const CARE = `<svg viewBox="0 0 40 40"><path d="M20 34C9 26 5 21 5 14.5 5 9 9.5 6 13.5 6c3 0 5 1.5 6.5 3.6C21.5 7.5 23.5 6 26.5 6 30.5 6 35 9 35 14.5 35 21 31 26 20 34z" fill="#fff"/><path d="M31 3l1.2 3 3 1.2-3 1.2L31 11.4l-1.2-3-3-1.2 3-1.2z" fill="#fff6a8"/><ellipse cx="13" cy="13" rx="3" ry="2" fill="#ffd6e6" transform="rotate(-35 13 13)"/></svg>`;
 const PUMPKIN = `<svg viewBox="0 0 40 40"><path d="M20 9c1-4 3-5 6-5" stroke="#4f7a2a" stroke-width="3" fill="none" stroke-linecap="round"/><ellipse cx="13" cy="23" rx="9" ry="12" fill="#ffb347"/><ellipse cx="27" cy="23" rx="9" ry="12" fill="#ffb347"/><ellipse cx="20" cy="23" rx="9" ry="12.5" fill="#ffc870"/><path d="M12 19l4-5 4 5zM20 19l4-5 4 5z" fill="#7a3a0a"/><path d="M11 25q9 9 18 0q-9 4-18 0z" fill="#7a3a0a"/></svg>`;
 /** The pull tab's arrow: points down to slide the shelf away (turned up when it's away). */
 const CHEVRON = `<svg viewBox="0 0 22 14"><path d="M3 3l8 8 8-8" fill="none" stroke="#e2508c" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
@@ -385,8 +402,10 @@ export interface UiHandlers {
   openMail(): void;
   /** A squishy link pasted into the Book: what to tell the kid. */
   receive(text: string): string;
-  /** Bath time for the one you hold. */
-  openBath(): void;
+  /** Today's care for the one you hold, or null when there is nobody to hold. */
+  careInfo(): { who: string; done: CareId[]; days: number } | null;
+  /** Do one of the day's care things (the bath starts bath time). */
+  care(id: CareId): void;
   /** Closed the bath before it was done. */
   closeBath(): void;
   /** The Spooky Box button. */
@@ -414,6 +433,8 @@ export interface WishGame {
   def: SquishyDef;
   name: string;
   want: MoodId;
+  /** A game of its own (daily care), instead of the one for `want`. */
+  wish?: Wish;
   /** A happy sound: each step, and when it's all done. */
   beat(done: boolean, step: number): void;
 }
@@ -443,6 +464,9 @@ const HAT_FROM: Record<HatDef["from"], string> = {
   spooky: "It came in the Spooky Box!",
   bath: "For bath time!",
 };
+
+/** A few words under each care tile. */
+const CARE_HOW: Record<CareId, string> = { feed: "A yummy snack", bath: "Scrub-a-dub", nap: "Rock to sleep", play: "A fun game" };
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
@@ -513,7 +537,7 @@ export class Ui {
         </div>
         <button class="tray-tab" aria-label="Hide the shelf"><span class="pill">${CHEVRON}<i class="dot"></i></span></button>
         <button class="float-btn spooky-btn"><span class="ico">${PUMPKIN}<span class="badge">0</span></span><span class="lbl">Spooky</span></button>
-        <button class="float-btn bath-btn"><span class="ico">${TUB}</span>Bath</button>
+        <button class="float-btn care-btn"><span class="ico">${CARE}<span class="badge">4</span></span>Care</button>
       </div>
       <div class="layer box"></div>
       <div class="layer bath">
@@ -558,7 +582,7 @@ export class Ui {
     this.tabDot = q(".tray-tab .dot");
     this.wireTray(q(".tray"));
     q(".hats-btn").addEventListener("click", () => this.hatsSheet());
-    q(".bath-btn").addEventListener("click", () => h.openBath());
+    q(".care-btn").addEventListener("click", () => this.careSheet());
     q(".spooky-btn").addEventListener("click", () => h.openSpooky());
     q(".bath-x").addEventListener("click", () => h.closeBath());
     q(".places-btn").addEventListener("click", () => this.placesSheet());
@@ -599,9 +623,60 @@ export class Ui {
     this.root.querySelector(".title .logo small")!.textContent = on ? "Happy Halloween!" : "Squishy Island";
   }
 
-  /** Bath time can start once the tutorial is done. */
-  setBathReady(on: boolean): void {
-    this.root.querySelector(".bath-btn")!.classList.toggle("on", on);
+  /** Care (and the bath inside it) can start once the tutorial is done. */
+  setCareReady(on: boolean): void {
+    this.root.querySelector(".care-btn")!.classList.toggle("on", on);
+  }
+
+  /** The Care button's little count of what's left today, or a check when it's all done. */
+  setCare(left: number): void {
+    const b = this.root.querySelector(".care-btn")!;
+    b.classList.toggle("all", left === 0);
+    b.querySelector(".badge")!.textContent = left === 0 ? "✓" : String(left);
+  }
+
+  /** Today's care for the one you hold: four big tiles, and the present for doing them all. */
+  careSheet(): void {
+    const info = this.h.careInfo();
+    if (!info) return;
+    const left = CARE_IDS.length - info.done.length;
+    const tile = (id: CareId) => {
+      const done = info.done.includes(id);
+      return `<button class="${done ? "done" : ""}" data-id="${id}"><i>${CARE_INFO[id].icon}</i>${esc(CARE_INFO[id].name)}<small>${done ? "Done today!" : CARE_HOW[id]}</small></button>`;
+    };
+    const present =
+      left === 0
+        ? `<div class="present got"><i>💖</i><div>All cared for today! See you tomorrow for more.${info.days > 1 ? `<br>${info.days} happy days so far` : ""}</div></div>`
+        : `<div class="present"><i>🎁</i><div>Do all four today for a present!<br>🍪 +${PRESENT_COOKIES} &nbsp;⭐ +${PRESENT_STARS}</div></div>`;
+    const panel = this.openSheet(
+      `<h1>Care for ${esc(info.who)}</h1><div class="sub">${left === 0 ? "Everything done today" : `${info.done.length} of ${CARE_IDS.length} done today`}</div>
+       <div class="care">${CARE_IDS.map(tile).join("")}</div>${present}`,
+    );
+    for (const b of panel.querySelectorAll<HTMLButtonElement>(".care button")) {
+      b.addEventListener("click", () => {
+        this.closeSheet();
+        this.h.care(b.dataset.id as CareId);
+      });
+    }
+  }
+
+  /** The present for caring all day. */
+  presentCard(who: string, cookies: number, stars: number): Promise<void> {
+    this.modal.innerHTML = `
+      <div class="card">
+        <div class="new">Yay!</div>
+        <div class="big-ico">🎁</div>
+        <div class="kind" style="font-size:20px;color:#e2508c">A present for you!</div>
+        <div class="note">You looked after ${esc(who)} all day. Thank you!</div>
+        <div class="loot">${cookies ? `<span>🍪 +${cookies}</span>` : ""}<span>⭐ +${stars}</span></div>
+        <div class="btns"><button class="big ok">Yay!</button></div>
+      </div>`;
+    this.modal.classList.add("on");
+    this.coverChanged();
+    return new Promise((resolve) => {
+      this.cardDone = () => resolve();
+      this.modal.querySelector(".ok")!.addEventListener("click", () => this.closeCard());
+    });
   }
 
   /**
@@ -1189,7 +1264,7 @@ export class Ui {
    */
   wish(g: WishGame): Promise<boolean> {
     this.endWish(false);
-    const w = wishFor(g.want);
+    const w = g.wish ?? wishFor(g.want);
     const el = this.wishEl;
     const total = w.need;
     el.innerHTML = `

@@ -8,6 +8,7 @@ import { catalogMood, isMood, type MoodId } from "./personality";
 import { BABIES_MAX, cleanBaby, COOKIES_MAX, growLeft, moodOf, type Baby } from "./babies";
 import { cleanGift, INBOX_MAX, type Gift } from "./gift";
 import { isHalloween } from "./season";
+import { cleanCare, freshCare, type Care } from "./care";
 
 export const SAVE_KEY = "squishycloset.save";
 export const SAVE_VERSION = 6;
@@ -75,6 +76,8 @@ export interface Save {
   spookyYear: number;
   /** Baths given. */
   baths: number;
+  /** Today's care (a snack, a bath, a nap, play) and the days it was all done. */
+  care: Care;
   /** The shelf and buttons are slid down out of the way, for more room to play. */
   trayDown: boolean;
 }
@@ -103,6 +106,7 @@ export const freshSave = (): Save => ({
   spookyBoxes: 0,
   spookyYear: 0,
   baths: 0,
+  care: freshCare(),
   trayDown: false,
 });
 
@@ -170,6 +174,7 @@ export function parseSave(raw: string | null): Save {
   out.spookyBoxes = Math.min(99, count(s.spookyBoxes));
   out.spookyYear = count(s.spookyYear);
   out.baths = count(s.baths);
+  out.care = cleanCare(s.care);
   out.trayDown = s.trayDown === true;
   if (s.v === 2) {
     // New in this update: friends play together, so bring the newest ones out.
