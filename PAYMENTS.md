@@ -36,7 +36,7 @@ unlock, only so the screens can be tried.
 - `src/payments.ts` picks the shop: Apple in the app, nothing on the web.
 - Locked places, the Book's ✨ marks and **Settings → Grown-ups → Full game** (only shown where things are locked) lead
   to a grown-up check (a times question in words, answered by typing the number), then the full game screen. That
-  screen shows Apple's price, Unlock, Restore purchase and the "one payment, no subscription, no ads" note. The price on the button comes from Apple in the buyer's own money ("Unlock for $2.99"). If Apple hasn't answered yet, the button just reads "Unlock the full game", so no price is written into the game. Kids never
+  screen shows Apple's price, Unlock, Restore purchase and the "one payment, no subscription, no ads" note. The price on the button comes from Apple in the buyer's own money ("Unlock for $2.99"). If Apple gives no price, the button reads "Unlock the full game" (and "Coming soon" if the store can't be reached), so no price is written into the game. Kids never
   see a price or a buy button before the check. That covers Apple's parental gate rule for the Kids category. There
   are no timers, no nagging and no "ask your parents" prompts.
 
