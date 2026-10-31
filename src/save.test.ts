@@ -10,6 +10,13 @@ describe("save", () => {
     expect(parseSave("[1,2]")).toEqual(freshSave());
   });
 
+  it("remembers the shelf slid down, and starts with it up", () => {
+    expect(freshSave().trayDown).toBe(false);
+    expect(parseSave(JSON.stringify({ ...freshSave(), trayDown: true })).trayDown).toBe(true);
+    expect(parseSave(JSON.stringify({ ...freshSave(), trayDown: "yes" })).trayDown).toBe(false);
+    expect(parseSave(JSON.stringify({ v: 5, owned: {} })).trayDown).toBe(false);
+  });
+
   it("upgrades a test build save, keeping sound and love", () => {
     const s = parseSave(JSON.stringify({ v: 1, look: "gold", love: 55, level: 3, sound: false, tried: ["tap", 7] }));
     expect(s.v).toBe(SAVE_VERSION);

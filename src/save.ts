@@ -75,6 +75,8 @@ export interface Save {
   spookyYear: number;
   /** Baths given. */
   baths: number;
+  /** The shelf and buttons are slid down out of the way, for more room to play. */
+  trayDown: boolean;
 }
 
 export const freshSave = (): Save => ({
@@ -101,6 +103,7 @@ export const freshSave = (): Save => ({
   spookyBoxes: 0,
   spookyYear: 0,
   baths: 0,
+  trayDown: false,
 });
 
 const strings = (a: unknown): string[] => (Array.isArray(a) ? a.filter((t): t is string => typeof t === "string") : []);
@@ -167,6 +170,7 @@ export function parseSave(raw: string | null): Save {
   out.spookyBoxes = Math.min(99, count(s.spookyBoxes));
   out.spookyYear = count(s.spookyYear);
   out.baths = count(s.baths);
+  out.trayDown = s.trayDown === true;
   if (s.v === 2) {
     // New in this update: friends play together, so bring the newest ones out.
     out.team = Object.keys(out.owned)

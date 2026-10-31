@@ -95,6 +95,11 @@ const thumbs = new Thumbs();
 const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 60);
 
 let screen: Screen = "title";
+/** How far the shelf has slid down, 0 to 1, as the slide goes (eased), and where it's heading. */
+let trayK = save.trayDown ? 1 : 0;
+let trayGoal = trayK;
+/** The slide's own clock, 0 to 1, before easing. */
+let trayT = trayK;
 let keepAsked = false;
 const persist = () => {
   storeSave(save);
@@ -1245,6 +1250,12 @@ const ui = new Ui(
     openBath: () => startBath(),
     closeBath: () => endBath(false),
     openSpooky,
+    tray: (down) => {
+      save.trayDown = down;
+      persist();
+      trayGoal = down ? 1 : 0;
+      ui.hand(null);
+    },
     bringIn: async (text) => {
       const code = findCode(text);
       const other = code && (await decodeSave(code));
@@ -1257,6 +1268,7 @@ const ui = new Ui(
   save.sound,
 );
 ui.halloween(isSpookySeason(today()));
+ui.setTray(save.trayDown, false);
 
 // ---- bath time ----------------------------------------------------------
 
@@ -1336,15 +1348,22 @@ const bounds: Bounds = { minX: -3, maxX: 3, maxY: 6, floorY: 0 };
 const BATH_ZOOM = 1.3;
 let worldPerPx = 0.01;
 
+/** Points the camera for the screen size, the zoom and how far the shelf has slid down. */
+function frameCamera(): void {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  // Bath time comes in closer, so there's more squishy to scrub; it keeps its own framing whatever the shelf does.
+  fitCamera(camera, w, h, save.zoom * (screen === "bath" ? BATH_ZOOM : 1), screen === "bath" ? 0 : trayK);
+  const base = camera.userData.base as { pos: THREE.Vector3; target: THREE.Vector3 };
+  stage.setViewDistance(base.pos.distanceTo(base.target));
+  worldPerPx = flyBounds(camera, h, bounds);
+}
+
 function fit(): void {
   const w = window.innerWidth;
   const h = window.innerHeight;
   renderer.setSize(w, h, false);
-  // Bath time comes in closer, so there's more squishy to scrub.
-  fitCamera(camera, w, h, save.zoom * (screen === "bath" ? BATH_ZOOM : 1));
-  const base = camera.userData.base as { pos: THREE.Vector3; target: THREE.Vector3 };
-  stage.setViewDistance(base.pos.distanceTo(base.target));
-  worldPerPx = flyBounds(camera, h, bounds);
+  frameCamera();
   island.fit(w, h);
   // On its side there's room to roam; turned back upright, anyone off the edge hops back into view.
   if (screen !== "bath") crew.reframe(groundView(camera));
@@ -1678,7 +1697,8 @@ function stepHints(): void {
     const p = toScreen(squishy.group.position.clone().add(new THREE.Vector3(0.15, 0.55, 0.9)));
     ui.hand(step.move, p.x, p.y);
   } else if (!step && pointAtOpen && save.boxes > 0) {
-    const btn = document.querySelector(".ui .nav .open .ico");
+    // With the shelf slid down, show the tab that brings the Open button back.
+    const btn = ui.trayDown ? ui.trayTab.querySelector(".pill") : document.querySelector(".ui .nav .open .ico");
     if (btn) {
       const b = btn.getBoundingClientRect();
       ui.hand("tap", b.left + b.width * 0.55, b.top + b.height * 0.45);
@@ -1690,6 +1710,18 @@ function stepHints(): void {
       ui.hand("tap", b.left + b.width * 0.55, b.top + b.height * 0.45);
     }
   } else ui.hand(null);
+}
+
+const TRAY_SLIDE = 0.38;
+const slideStill = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+/** The world grows into the room the shelf leaves (and gives it back) along with the slide. */
+function stepTray(dt: number): void {
+  if (trayT === trayGoal) return;
+  const step = slideStill?.matches ? 1 : dt / TRAY_SLIDE;
+  trayT = trayGoal > trayT ? Math.min(trayGoal, trayT + step) : Math.max(trayGoal, trayT - step);
+  trayK = ease(trayT);
+  if (trayT === trayGoal) fit();
+  else frameCamera();
 }
 
 /** Watches how long frames take and trades a little sharpness for smoothness. */
@@ -1767,6 +1799,7 @@ function frame(): void {
     stepGrowClock(dt);
     stepMail(dt);
   }
+  stepTray(dt);
   const sway = place.sway(now);
   swayCamera(camera, sway.roll, sway.bob);
   if (popScale < 1) {

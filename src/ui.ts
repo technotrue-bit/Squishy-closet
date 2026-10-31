@@ -39,6 +39,20 @@ const CSS = `
 .ui .stars { display: flex; align-items: center; gap: 4px; font-weight: 900; font-size: 16px; color: #d48a00; background: rgba(255,255,255,0.7); padding: 3px 10px 3px 5px; border-radius: 999px; }
 .ui .stars svg { width: 22px; height: 22px; }
 
+.ui .closet { --tray-h: 180px; }
+.ui .tray { position: absolute; left: 0; right: 0; bottom: 0; height: calc(env(safe-area-inset-bottom) + var(--tray-h)); transition: transform 0.38s cubic-bezier(.4,0,.2,1); will-change: transform; }
+.ui .closet.tray-down .tray { transform: translateY(100%); }
+.ui .closet.tray-down .tray button { pointer-events: none; }
+.ui .tray-tab { position: absolute; z-index: 2; left: 50%; bottom: calc(env(safe-area-inset-bottom) + var(--tray-h) - 4px); width: 92px; height: 40px; margin-left: -46px; padding: 0; background: none; display: grid; place-items: center; touch-action: none; transition: bottom 0.38s cubic-bezier(.4,0,.2,1); }
+.ui .tray-tab .pill { position: relative; width: 60px; height: 24px; border-radius: 12px; background: rgba(255,255,255,0.8); box-shadow: 0 3px 0 rgba(200,110,150,0.35); display: grid; place-items: center; }
+.ui .tray-tab:active .pill { transform: translateY(2px); box-shadow: 0 1px 0 rgba(200,110,150,0.35); }
+.ui .tray-tab svg { width: 22px; height: 14px; transition: transform 0.38s cubic-bezier(.4,0,.2,1); }
+.ui .tray-tab .dot { position: absolute; top: -5px; right: -5px; width: 14px; height: 14px; border-radius: 7px; background: #ff4f8d; border: 2px solid #fff; box-sizing: border-box; display: none; }
+.ui .closet.tray-down .tray-tab { bottom: calc(env(safe-area-inset-bottom) + 4px); }
+.ui .closet.tray-down .tray-tab svg { transform: rotate(180deg); }
+.ui .closet.tray-down .tray-tab .dot.on { display: block; animation: bob 1.2s ease-in-out infinite; }
+.ui .closet.still .tray, .ui .closet.still .tray-tab, .ui .closet.still .tray-tab svg, .ui .closet.still .float-btn { transition: none; }
+@media (prefers-reduced-motion: reduce) { .ui .tray, .ui .tray-tab, .ui .tray-tab svg, .ui .float-btn { transition: none; } }
 .ui .plank { position: absolute; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom) + 84px); height: 12px; background: linear-gradient(180deg, #e8b98a, #c98d58); box-shadow: 0 4px 8px rgba(120,60,30,0.25); }
 .ui .shelf { position: absolute; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom) + 94px); height: 86px; pointer-events: auto; overflow-x: auto; overflow-y: hidden; white-space: nowrap; padding: 0 10px; scrollbar-width: none; touch-action: pan-x; }
 .ui .shelf::-webkit-scrollbar { display: none; }
@@ -262,7 +276,8 @@ const CSS = `
 .ui .picks img { width: 84px; height: 84px; display: block; }
 .ui .toast { position: absolute; z-index: 4; top: calc(env(safe-area-inset-top) + 28%); left: 50%; transform: translate(-50%, -50%) scale(0.7); opacity: 0; width: max-content; max-width: min(84vw, 340px); box-sizing: border-box; padding: 8px 16px; border-radius: 18px; background: rgba(255,255,255,0.88); box-shadow: 0 3px 0 rgba(200,110,150,0.3), 0 8px 20px rgba(160,60,110,0.15); font-weight: 900; font-size: 17px; line-height: 1.2; color: #e2508c; text-align: center; text-wrap: balance; transition: opacity 0.25s, transform 0.35s cubic-bezier(.3,1.7,.5,1); }
 .ui .toast.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-.ui .float-btn { position: absolute; bottom: calc(env(safe-area-inset-bottom) + 190px); width: 64px; display: none; flex-direction: column; align-items: center; gap: 2px; background: none; font-weight: 900; font-size: 12.5px; text-shadow: 0 1px 0 rgba(255,255,255,0.8); }
+.ui .float-btn { position: absolute; bottom: calc(env(safe-area-inset-bottom) + var(--tray-h) + 10px); width: 64px; display: none; flex-direction: column; align-items: center; gap: 2px; background: none; font-weight: 900; font-size: 12.5px; text-shadow: 0 1px 0 rgba(255,255,255,0.8); transition: bottom 0.38s cubic-bezier(.4,0,.2,1); }
+.ui .closet.tray-down .float-btn { bottom: calc(env(safe-area-inset-bottom) + 10px); }
 .ui .float-btn.on { display: flex; }
 .ui .float-btn .ico { width: 56px; height: 56px; border-radius: 28px; display: grid; place-items: center; position: relative; }
 .ui .float-btn .ico svg { width: 40px; height: 40px; }
@@ -291,7 +306,7 @@ const CSS = `
 .ui .book .note { margin: -4px 16px 8px; font-weight: 800; font-size: 13px; color: #c25a0a; }
 @media (max-height: 700px) { .ui .hint { font-size: 20px; padding: 8px 16px; } .ui .hint small { font-size: 13px; } .ui .skip { top: calc(env(safe-area-inset-top) + 186px); } }
 @media (max-width: 350px) { .ui .nav button { width: 56px; font-size: 11px; } .ui .nav .ico { width: 46px; height: 46px; } .ui .nav .open .ico { width: 56px; height: 56px; } }
-@media (max-height: 600px) { .ui .shelf { height: 70px; } .ui .shelf img { width: 60px; height: 60px; } .ui .shelf button { width: 60px; height: 62px; } .ui .card img { width: 140px; height: 140px; } }
+@media (max-height: 600px) { .ui .closet { --tray-h: 164px; } .ui .shelf { height: 70px; } .ui .shelf img { width: 60px; height: 60px; } .ui .shelf button { width: 60px; height: 62px; } .ui .card img { width: 140px; height: 140px; } }
 `;
 
 const HEART = `<svg class="heart" viewBox="0 0 32 32"><path d="M16 28C7 21 3 17 3 11c0-5 4-8 8-8 2.5 0 4 1.2 5 3 1-1.8 2.5-3 5-3 4 0 8 3 8 8 0 6-4 10-13 17z" fill="#ff4f8d" stroke="#fff" stroke-width="2.5"/><ellipse cx="10" cy="10" rx="2.6" ry="1.8" fill="#fff" opacity=".8" transform="rotate(-35 10 10)"/></svg>`;
@@ -307,6 +322,8 @@ const GEAR = `<svg width="28" height="28" viewBox="0 0 28 28"><path d="M14 4l2 .
 const JOBS = `<svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="19" rx="4" fill="#8fdcff"/><rect x="8" y="1.5" width="8" height="4" rx="2" fill="#2a86c4"/><path d="M8 13l3 3 5-6" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const TUB = `<svg viewBox="0 0 40 40"><circle cx="13" cy="9" r="4" fill="#fff" opacity=".9"/><circle cx="20" cy="6" r="2.5" fill="#fff" opacity=".8"/><circle cx="26" cy="11" r="3" fill="#fff" opacity=".85"/><path d="M4 19h32c0 8-5 12-16 12S4 27 4 19z" fill="#fff"/><path d="M4 19h32" stroke="#ffc6df" stroke-width="3" stroke-linecap="round"/><circle cx="14" cy="19" r="4" fill="#fff"/><circle cx="21" cy="17" r="5" fill="#fff"/><circle cx="28" cy="19" r="3.5" fill="#fff"/><path d="M10 31l-2 4M30 31l2 4" stroke="#ffd27a" stroke-width="3" stroke-linecap="round"/></svg>`;
 const PUMPKIN = `<svg viewBox="0 0 40 40"><path d="M20 9c1-4 3-5 6-5" stroke="#4f7a2a" stroke-width="3" fill="none" stroke-linecap="round"/><ellipse cx="13" cy="23" rx="9" ry="12" fill="#ffb347"/><ellipse cx="27" cy="23" rx="9" ry="12" fill="#ffb347"/><ellipse cx="20" cy="23" rx="9" ry="12.5" fill="#ffc870"/><path d="M12 19l4-5 4 5zM20 19l4-5 4 5z" fill="#7a3a0a"/><path d="M11 25q9 9 18 0q-9 4-18 0z" fill="#7a3a0a"/></svg>`;
+/** The pull tab's arrow: points down to slide the shelf away (turned up when it's away). */
+const CHEVRON = `<svg viewBox="0 0 22 14"><path d="M3 3l8 8 8-8" fill="none" stroke="#e2508c" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const HOUSE = `<svg viewBox="0 0 20 20"><path d="M3 10l7-6 7 6v7H3z" fill="#9a72e0"/><rect x="8" y="12" width="4" height="5" rx="1" fill="#fff"/></svg>`;
 /** Little pictures of each place for the place picker. */
 const PLACE_PICS: Record<PlaceId, string> = {
@@ -374,6 +391,8 @@ export interface UiHandlers {
   closeBath(): void;
   /** The Spooky Box button. */
   openSpooky(): void;
+  /** The shelf and buttons were slid down (true) or brought back up (false). */
+  tray(down: boolean): void;
 }
 
 export interface BabyInfo {
@@ -453,6 +472,13 @@ export class Ui {
   private cookiesEl: HTMLElement;
   private hatsDot: HTMLElement;
   private mailDot: HTMLElement;
+  private tabEl: HTMLElement;
+  private tabDot: HTMLElement;
+  private down = false;
+  /** A finger that may be swiping the shelf down or the tab up. */
+  private swipe: { id: number; x: number; y: number } | null = null;
+  /** When a swipe moved the shelf, so the tap it ends on doesn't count too. */
+  private swipedAt = -1;
 
   constructor(
     private h: UiHandlers,
@@ -474,6 +500,7 @@ export class Ui {
       <div class="layer closet">
         <div class="love">${HEART}<div class="bar"><div class="fill"></div></div><span class="gift">${GIFT}</span></div>
         <div class="pills"><div class="stars">${STAR}<span>0</span></div><div class="jobs">${JOBS}<span>0</span></div><div class="cookies"><i>🍪</i><span>0</span></div></div>
+        <div class="tray">
         <div class="plank"></div>
         <div class="shelf"></div>
         <div class="nav">
@@ -483,6 +510,8 @@ export class Ui {
           <button class="places-btn"><span class="ico">${PLACE}</span>Places</button>
           <button class="island-btn"><span class="ico">${ISLAND}</span>Island</button>
         </div>
+        </div>
+        <button class="tray-tab" aria-label="Hide the shelf"><span class="pill">${CHEVRON}<i class="dot"></i></span></button>
         <button class="float-btn spooky-btn"><span class="ico">${PUMPKIN}<span class="badge">0</span></span><span class="lbl">Spooky</span></button>
         <button class="float-btn bath-btn"><span class="ico">${TUB}</span>Bath</button>
       </div>
@@ -525,6 +554,9 @@ export class Ui {
     this.cookiesEl = q(".cookies");
     this.hatsDot = q(".hats-btn .dot");
     this.mailDot = q(".book-btn .dot");
+    this.tabEl = q(".tray-tab");
+    this.tabDot = q(".tray-tab .dot");
+    this.wireTray(q(".tray"));
     q(".hats-btn").addEventListener("click", () => this.hatsSheet());
     q(".bath-btn").addEventListener("click", () => h.openBath());
     q(".spooky-btn").addEventListener("click", () => h.openSpooky());
@@ -635,6 +667,88 @@ export class Ui {
   /** A red dot on Hats when there is a new hat to try. */
   newHat(on: boolean): void {
     this.hatsDot.classList.toggle("on", on);
+    this.refreshTabDot();
+  }
+
+  /** The shelf and buttons are slid down out of the way. */
+  get trayDown(): boolean {
+    return this.down;
+  }
+
+  /** Slides the shelf and buttons down out of the way, or back up. `animate` false jumps straight there (on start). */
+  setTray(down: boolean, animate = true): void {
+    this.down = down;
+    const closet = this.layers.closet;
+    if (!animate) closet.classList.add("still");
+    closet.classList.toggle("tray-down", down);
+    this.tabEl.setAttribute("aria-label", down ? "Show the shelf" : "Hide the shelf");
+    this.tabEl.setAttribute("aria-expanded", String(!down));
+    this.refreshTabDot();
+    if (!animate) {
+      // Let the jump land before slides come back on.
+      void closet.offsetHeight;
+      requestAnimationFrame(() => closet.classList.remove("still"));
+    }
+  }
+
+  /** The pull tab, for the helping hand to point at while the shelf is down. */
+  get trayTab(): HTMLElement {
+    return this.tabEl;
+  }
+
+  private toggleTray(down: boolean): void {
+    if (down === this.down) return;
+    this.setTray(down);
+    this.h.tray(down);
+  }
+
+  /** While the shelf is down, the tab gets a dot when something new waits on a button. */
+  private refreshTabDot(): void {
+    const news =
+      this.hatsDot.classList.contains("on") || this.mailDot.classList.contains("on") || this.openBtn.classList.contains("ready");
+    this.tabDot.classList.toggle("on", news);
+  }
+
+  /**
+   * Tap the tab to slide the shelf down or up; or swipe the shelf, the buttons
+   * or the tab down to tuck them away, and swipe the tab up to bring them back.
+   */
+  private wireTray(tray: HTMLElement): void {
+    const start = (e: PointerEvent) => {
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      this.swipe = { id: e.pointerId, x: e.clientX, y: e.clientY };
+    };
+    tray.addEventListener("pointerdown", start);
+    this.tabEl.addEventListener("pointerdown", start);
+    window.addEventListener("pointermove", (e) => {
+      const sw = this.swipe;
+      if (!sw || sw.id !== e.pointerId) return;
+      const dx = e.clientX - sw.x;
+      const dy = e.clientY - sw.y;
+      // Mostly up or down, and far enough to mean it; sideways is scrolling the shelf.
+      if (Math.abs(dy) < 34 || Math.abs(dy) < Math.abs(dx) * 1.4) return;
+      this.swipe = null;
+      this.swipedAt = performance.now();
+      this.toggleTray(dy > 0);
+    });
+    const end = (e: PointerEvent) => {
+      if (this.swipe?.id === e.pointerId) this.swipe = null;
+    };
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
+    // The tap a swipe ends on isn't a press of whatever is under the finger.
+    this.root.addEventListener(
+      "click",
+      (e) => {
+        if (this.swipedAt >= 0 && performance.now() - this.swipedAt < 450) {
+          e.stopPropagation();
+          e.preventDefault();
+        }
+        this.swipedAt = -1;
+      },
+      true,
+    );
+    this.tabEl.addEventListener("click", () => this.toggleTray(!this.down));
   }
 
   setLove(love: number): void {
@@ -651,6 +765,7 @@ export class Ui {
     this.badge.style.display = n > 0 ? "grid" : "none";
     this.openBtn.classList.toggle("ready", n > 0);
     this.openBtn.classList.toggle("empty", n === 0);
+    this.refreshTabDot();
   }
 
   setStars(n: number): void {
@@ -895,6 +1010,7 @@ export class Ui {
   /** A dot on the Book button while squishy mail waits. */
   setMail(n: number): void {
     this.mailDot.classList.toggle("on", n > 0);
+    this.refreshTabDot();
   }
 
   /**
