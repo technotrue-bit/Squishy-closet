@@ -14,7 +14,7 @@ import { Squishy, type Bounds } from "./squishy";
 import { buildStage, BASKET_FLOOR, BASKET_WALL, canvasTex, LID_CLOSED, LID_REST } from "./scene";
 import { buildIsland } from "./island";
 import { Effects } from "./fx";
-import { Ui, type HandMove, type Screen, type ShelfState } from "./ui";
+import { Ui, type HandMove, type Screen, type ShelfState, type UiHandlers } from "./ui";
 import { Thumbs } from "./thumbs";
 import { CATALOG, defById, type SquishyDef } from "./catalog";
 import { isOctober, openBox, openSpookyBox } from "./boxes";
@@ -74,6 +74,10 @@ import {
 } from "./babies";
 import { wishFor, wishWords } from "./wishes";
 import { careGame, doCare, doneToday, leftToday, type CareId } from "./care";
+import { clearTestUnlock, FREE_PLACES, fullWhy, hasFull, locksOn, placeOpen, squishyOpen, TEST_BUILD, writeUnlock } from "./unlock";
+import { shop, testShop, type BuyResult } from "./payments";
+import { watchApple } from "./apple";
+import { inApp } from "./native";
 
 const app = document.getElementById("app")!;
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
@@ -414,7 +418,7 @@ function stepBabies(dt: number): void {
   babyClock -= dt;
   if (babyClock > 0) return;
   babyClock = 240 + Math.random() * 180;
-  const kind = pickBabyKind(new Set(Object.keys(save.owned)), save.babies.map((b) => b.kind), today(), Math.random);
+  const kind = pickBabyKind(new Set(Object.keys(save.owned)), save.babies.map((b) => b.kind), today(), Math.random, canFind);
   const def = defById(kind);
   if (!def) return;
   nursery.putSleeper(def, placeScene(placeId));
@@ -576,6 +580,8 @@ function wearHat(id: string | null): void {
 
 let placeId: PlaceId = save.place;
 function goPlace(id: PlaceId, quiet = false): void {
+  // A place outside this phone's game (the free game has two) goes to the first free one, Living Room.
+  if (!placeOpen(id, hasFull(save.owned))) id = FREE_PLACES[0];
   placeId = id;
   save.place = id;
   persist();
@@ -592,6 +598,50 @@ function goPlace(id: PlaceId, quiet = false): void {
     fx.emit("sparkle", squishy.topPoint(), 12);
     ui.toast(placeById(id).name, 1400);
   }
+}
+
+// ---- the full game ----------------------------------------------------
+
+/** Squishies a box or a nap can bring on this phone: the free game has no sparkly ones. */
+const canFind = (d: SquishyDef): boolean => squishyOpen(d, hasFull(save.owned));
+
+// In the app, once selling has started: a purchase Apple finishes at any time (an approved Ask to Buy, a restore on
+// another screen) opens the game.
+if (inApp() && locksOn()) {
+  watchApple(() => {
+    if (fullWhy(save.owned) === null) {
+      writeUnlock("apple", Date.now());
+      ui.toast("The whole world is open! 🎉", 2200);
+    }
+  });
+}
+
+function fullHandlers(): Pick<UiHandlers, "full" | "shopInfo" | "buyFull" | "restoreFull" | "relock"> {
+  const unlocked = (r: BuyResult): BuyResult => {
+    if (r.ok) {
+      writeUnlock(r.how, Date.now());
+      sfx.chime(true);
+      fx.emit("sparkle", squishy.topPoint(), 24);
+    }
+    return r;
+  };
+  return {
+    full: () => {
+      const why = fullWhy(save.owned);
+      return { has: why !== null, why, locks: locksOn(), test: TEST_BUILD };
+    },
+    shopInfo: async () => {
+      const s = shop();
+      const ready = await s.ready();
+      return { ready, price: ready ? await s.price() : null };
+    },
+    buyFull: async (test) => unlocked(await (test && testShop ? testShop : shop()).buy()),
+    restoreFull: async () => unlocked(await shop().restore()),
+    relock: () => {
+      clearTestUnlock();
+      goPlace(placeId, true);
+    },
+  };
 }
 
 /** Makes `id` the one you hold; the one you held joins the friends if there is room. */
@@ -669,7 +719,7 @@ let basketAway = -1;
 
 function startBox(first: boolean, spooky = false): void {
   const owned = new Set(Object.keys(save.owned));
-  const { def } = spooky ? openSpookyBox(owned, Math.random) : openBox(owned, today(), Math.random, first);
+  const { def } = spooky ? openSpookyBox(owned, Math.random, canFind) : openBox(owned, today(), Math.random, first, canFind);
   reveal = { def, first, taps: 0, phase: spooky ? "arriving" : "closing", t: 0, shake: 0, spooky };
   fingersUp();
   setScreen("box");
@@ -1210,6 +1260,7 @@ const ui = new Ui(
     hats: () => ({ wearing: hatOf(save.active), have: save.hats, who: save.active ? nameOf(save, save.active) : "" }),
     wearHat,
     goPlace: (id) => goPlace(id),
+    ...fullHandlers(),
     place: () => placeId,
     zoom: () => save.zoom,
     setZoom: (z) => {

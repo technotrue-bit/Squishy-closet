@@ -6,7 +6,7 @@
 // grow up sooner and shapes who they become. Only facts and rules live here; the
 // babies you see are in nursery.ts.
 
-import { CATALOG } from "./catalog";
+import { CATALOG, type SquishyDef } from "./catalog";
 import { weightOf } from "./boxes";
 import { isMood, LESSONS, MOOD_IDS, type MoodId } from "./personality";
 
@@ -58,9 +58,9 @@ export function newBaby(kind: string, now: number): Baby {
   return { key: `b${now.toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`, kind, got: now, traits: {}, lessons: [], napUntil: 0, wantAt: now + WANT_FIRST_MS, wishes: 0 };
 }
 
-/** Which squishy a sleeping baby is: one you don't have or aren't raising yet. */
-export function pickBabyKind(owned: ReadonlySet<string>, raising: readonly string[], date: Date, rand: () => number): string {
-  const all = CATALOG.filter((d) => d.foundBy.some((f) => f.kind === "box"));
+/** Which squishy a sleeping baby is: one you don't have or aren't raising yet, from the squishies `allow` lets in. */
+export function pickBabyKind(owned: ReadonlySet<string>, raising: readonly string[], date: Date, rand: () => number, allow: (d: SquishyDef) => boolean = () => true): string {
+  const all = CATALOG.filter((d) => d.foundBy.some((f) => f.kind === "box") && allow(d));
   const fresh = all.filter((d) => !owned.has(d.id) && !raising.includes(d.id));
   const pool = fresh.length ? fresh : all.filter((d) => !raising.includes(d.id));
   const from = pool.length ? pool : all;

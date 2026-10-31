@@ -13,6 +13,8 @@ import { LESSONS, moodById, type Mood, type MoodId } from "./personality";
 import { wishFor, wishWords, type Wish } from "./wishes";
 import { CARE_IDS, CARE_INFO, PRESENT_COOKIES, PRESENT_STARS, type CareId } from "./care";
 import type { Thumbs } from "./thumbs";
+import { FREE_PLACES, inFreeGame, placeOpen, squishyOpen, type FullWhy } from "./unlock";
+import type { BuyResult } from "./payments";
 import qrcode from "qrcode-generator";
 
 const CSS = `
@@ -236,6 +238,7 @@ const CSS = `
 .ui .book .cell b { position: absolute; left: 7px; top: 4px; font-size: 12px; font-weight: 900; color: #c58ab0; }
 .ui .book .cell.missing::after { content: "?"; position: absolute; inset: 0; display: grid; place-items: center; font-size: 28px; font-weight: 900; color: #c9b0d6; }
 .ui .book .cell.wobble { animation: wiggle 0.5s; }
+.ui .book .cell .lock { position: absolute; right: 6px; top: 3px; font-size: 12px; z-index: 1; }
 .ui .book .pad { height: calc(env(safe-area-inset-bottom) + 30px); }
 
 .ui .sheet { position: absolute; inset: 0; z-index: 3; display: none; pointer-events: auto; background: rgba(90,40,80,0.35); align-items: flex-end; justify-content: center; }
@@ -258,6 +261,18 @@ const CSS = `
 .ui .places button.on { box-shadow: 0 0 0 4px #ff5f9c, 0 4px 0 #e6c6da; }
 .ui .places svg { width: 100%; height: auto; display: block; margin-bottom: 6px; }
 .ui .places small { display: block; font-size: 12px; font-weight: 800; color: #a0607f; }
+.ui .places button.locked { position: relative; }
+.ui .places button.locked svg { filter: saturate(0.35) opacity(0.7); }
+.ui .places button.locked .lock { position: absolute; top: 8px; right: 8px; width: 30px; height: 30px; border-radius: 15px; background: #fff; display: grid; place-items: center; font-size: 16px; box-shadow: 0 2px 0 #e6c6da; }
+.ui .full ul { margin: 4px 6px 12px; padding-left: 22px; font-weight: 800; font-size: 16px; color: #5a2a4a; line-height: 1.45; }
+.ui .full .tip, .ui .gate .tip { text-align: center; font-weight: 800; font-size: 13px; color: #a0607f; margin: 10px 4px 0; line-height: 1.35; }
+.ui .full .btns, .ui .gate .btns { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 8px; }
+.ui .full .btns .big, .ui .gate .btns .big { font-size: 18px; padding: 12px 20px; }
+.ui .full .btns .big:disabled { filter: grayscale(0.7) opacity(0.6); }
+.ui .full .link { background: none; font-weight: 900; font-size: 15px; color: #9a72e0 !important; text-decoration: underline; padding: 8px; }
+.ui .full .test { border: 3px dashed #c9b0d6; border-radius: 16px; padding: 8px; margin-top: 12px; text-align: center; font-weight: 800; font-size: 13px; color: #9a8aa3; }
+.ui .gate .ask { text-align: center; font-weight: 900; font-size: 20px; color: #5a2a4a; margin: 6px 0 10px; }
+.ui .gate input { display: block; margin: 0 auto; width: 140px; box-sizing: border-box; border-radius: 14px; border: 3px solid #f3c6da; padding: 10px; font: inherit; font-size: 24px; font-weight: 900; text-align: center; color: #5a2a4a; pointer-events: auto; -webkit-user-select: text; user-select: text; }
 .ui .row { display: flex; align-items: center; gap: 12px; margin: 14px 4px; font-weight: 900; font-size: 20px; }
 .ui .row .lbl { width: 72px; }
 .ui .row input[type=range] { flex: 1; pointer-events: auto; accent-color: #ff5f9c; height: 34px; }
@@ -412,6 +427,16 @@ export interface UiHandlers {
   openSpooky(): void;
   /** The shelf and buttons were slid down (true) or brought back up (false). */
   tray(down: boolean): void;
+  /** The full game: does this phone have it and why, is anything locked in this build, is it a preview build. */
+  full(): { has: boolean; why: FullWhy | null; locks: boolean; test: boolean };
+  /** Can the full game be bought right now, and its price as the store shows it. */
+  shopInfo(): Promise<{ ready: boolean; price: string | null }>;
+  /** Buy the full game (or, in a preview build, a test unlock). */
+  buyFull(test: boolean): Promise<BuyResult>;
+  /** Find a purchase made before. */
+  restoreFull(): Promise<BuyResult>;
+  /** Preview builds only: back to the free game. */
+  relock(): void;
 }
 
 export interface BabyInfo {
@@ -952,16 +977,129 @@ export class Ui {
 
   placesSheet(): void {
     const here = this.h.place();
+    const { has } = this.h.full();
     const panel = this.openSheet(
       `<h1>Places</h1><div class="sub">Where do you want to play?</div>
-       <div class="places">${PLACES.map((p) => `<button class="${p.id === here ? "on" : ""}" data-id="${p.id}">${PLACE_PICS[p.id]}${esc(p.name)}<small>${p.jobs.length} jobs to do</small></button>`).join("")}</div>`,
+       <div class="places">${PLACES.map((p) => {
+         const open = placeOpen(p.id, has);
+         return `<button class="${p.id === here ? "on" : ""}${open ? "" : " locked"}" data-id="${p.id}">${PLACE_PICS[p.id]}${open ? "" : `<span class="lock" aria-hidden="true">🔒</span>`}${esc(p.name)}<small>${open ? `${p.jobs.length} jobs to do` : "Full game"}</small></button>`;
+       }).join("")}</div>`,
     );
     for (const b of panel.querySelectorAll<HTMLButtonElement>(".places button")) {
       b.addEventListener("click", () => {
+        const id = b.dataset.id as PlaceId;
+        if (!placeOpen(id, this.h.full().has)) {
+          // Locked places lead to the grown-ups' screen, behind the grown-up check, and nowhere else.
+          this.grownUpCheck(() => void this.fullSheet());
+          return;
+        }
         this.closeSheet();
-        this.h.goPlace(b.dataset.id as PlaceId);
+        this.h.goPlace(id);
       });
     }
+  }
+
+  /**
+   * A check only a grown-up can pass before anything about buying: a times question written in words, answered by
+   * typing the number. Wrong answers just close it, with no hint.
+   */
+  grownUpCheck(pass: () => void): void {
+    const WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
+    const a = 3 + Math.floor(Math.random() * 7);
+    const b = 3 + Math.floor(Math.random() * 7);
+    const panel = this.openSheet(
+      `<div class="gate"><h1>For grown-ups</h1>
+       <div class="sub">Please ask a grown-up to answer.</div>
+       <div class="ask">What is ${WORDS[a]} times ${WORDS[b]}?</div>
+       <input inputmode="numeric" pattern="[0-9]*" maxlength="3" autocomplete="off" aria-label="Answer">
+       <div class="btns"><button class="big alt back">Back</button><button class="big go">Go on</button></div></div>`,
+    );
+    const input = panel.querySelector("input") as HTMLInputElement;
+    const go = () => {
+      if (Number(input.value.trim()) === a * b) pass();
+      else {
+        this.closeSheet();
+        this.toast("That's not it. Ask a grown-up!", 1600);
+      }
+    };
+    panel.querySelector(".go")!.addEventListener("click", go);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") go();
+    });
+    panel.querySelector(".back")!.addEventListener("click", () => this.closeSheet());
+  }
+
+  /** For grown-ups (after the check): what the full game adds, buying it once, and restoring a purchase. */
+  async fullSheet(): Promise<void> {
+    const info = this.h.full();
+    const more = PLACES.filter((p) => !FREE_PLACES.includes(p.id)).map((p) => esc(p.name));
+    const sparkly = CATALOG.filter((d) => !inFreeGame(d)).length;
+    const whyWords: Record<FullWhy, string> = {
+      open: "Every place and squishy is open.",
+      early: "You played before the full game came out, so it's yours to keep. Thank you!",
+      apple: "Bought on this Apple account. Thank you!",
+      web: "Bought on TrueAIGaming. Thank you!",
+      test: "Test unlock (preview builds only).",
+    };
+    if (info.has) {
+      const panel = this.openSheet(
+        `<div class="full"><h1>The full game</h1>
+         <div class="sub">${esc(whyWords[info.why ?? "open"])}</div>
+         <ul><li>Every place: ${more.join(", ")}</li><li>All ${sparkly} sparkly squishies to find (glitter, glow and gold)</li><li>The hats friends find in every place</li></ul>
+         ${info.test && info.why === "test" ? `<div class="test">Preview build only<br><button class="link relock">Lock it again</button></div>` : ""}</div>`,
+      );
+      panel.querySelector(".relock")?.addEventListener("click", () => {
+        this.h.relock();
+        this.closeSheet();
+        this.toast("Back to the free game (preview)", 1600);
+      });
+      return;
+    }
+    const panel = this.openSheet(
+      `<div class="full"><h1>The full game</h1>
+       <div class="sub">One purchase opens all of Aurora's World.</div>
+       <ul><li>${more.length} more places: ${more.join(", ")}</li><li>${sparkly} sparkly squishies to find (glitter, glow and gold)</li><li>The hats friends find in those places</li></ul>
+       <div class="btns"><button class="big buy" disabled>Checking…</button></div>
+       <div class="btns"><button class="link restore">Restore purchase</button></div>
+       <div class="tip">One payment, no subscription, no ads, nothing else to buy. Squishies, hats and babies you already have always stay.</div>
+       ${info.test ? `<div class="test">Preview build only: no payment is hooked up yet.<br><button class="link testbuy">Test unlock</button></div>` : ""}</div>`,
+    );
+    const buy = panel.querySelector<HTMLButtonElement>(".buy")!;
+    const done = (r: BuyResult) => {
+      if (!panel.isConnected) return;
+      if (r.ok) {
+        this.closeSheet();
+        this.toast("The whole world is open! 🎉", 2200);
+        return;
+      }
+      if (r.why === "cancelled") return;
+      this.toast(
+        r.why === "none"
+          ? "No earlier purchase found."
+          : r.why === "not-ready"
+            ? "Buying isn't set up yet."
+            : r.why === "pending"
+              ? "Waiting for approval. The game opens up when it comes."
+              : "That didn't go through. Try again later.",
+        2400,
+      );
+    };
+    panel.querySelector(".testbuy")?.addEventListener("click", async () => done(await this.h.buyFull(true)));
+    panel.querySelector(".restore")!.addEventListener("click", async () => done(await this.h.restoreFull()));
+    buy.addEventListener("click", async () => {
+      buy.disabled = true;
+      done(await this.h.buyFull(false));
+      if (buy.isConnected) buy.disabled = false;
+    });
+    let shop = { ready: false, price: null as string | null };
+    try {
+      shop = await this.h.shopInfo();
+    } catch {
+      // Shown as not ready.
+    }
+    if (!buy.isConnected) return;
+    buy.disabled = !shop.ready;
+    buy.textContent = !shop.ready ? "Coming soon" : shop.price ? `Unlock for ${shop.price}` : "Unlock the full game";
   }
 
   settingsSheet(): void {
@@ -971,9 +1109,11 @@ export class Ui {
       `<h1>Settings</h1>
        <div class="row"><span class="lbl">Sound</span><button class="toggle${on ? "" : " off"}">${on ? "On" : "Off"}</button></div>
        <div class="row"><span class="lbl">Zoom</span><span class="sm">−</span><input type="range" min="${ZOOM_MIN}" max="${ZOOM_MAX}" step="0.01" value="${z}" aria-label="Zoom"><span class="sm">+</span></div>
-       <div class="row grown"><span class="lbl">Grown-ups</span><button class="toggle move-btn">Move to a new phone</button></div>`,
+       <div class="row grown"><span class="lbl">Grown-ups</span><button class="toggle move-btn">Move to a new phone</button></div>
+       ${this.h.full().locks ? `<div class="row grown"><span class="lbl">Grown-ups</span><button class="toggle full-btn">Full game</button></div>` : ""}`,
     );
     panel.querySelector(".move-btn")!.addEventListener("click", () => void this.moveSheet());
+    panel.querySelector(".full-btn")?.addEventListener("click", () => this.grownUpCheck(() => void this.fullSheet()));
     const t = panel.querySelector(".toggle") as HTMLButtonElement;
     t.addEventListener("click", () => {
       const now = this.h.toggleSound();
@@ -1626,6 +1766,7 @@ export class Ui {
   /** The Squishy Book: every squishy, with shadows for ones not found yet. */
   book(owned: Record<string, { mood?: MoodId }>, nameOf: (id: string) => string): void {
     const found = CATALOG.filter((d) => owned[d.id]).length;
+    const full = this.h.full().has;
     // The way out sits in the sticky header, so it is there however far down you scroll.
     let html = `<div class="head"><button class="back" aria-label="Back">${BACK}</button><h1>Squishy Book</h1><div class="found">You found ${found} of ${CATALOG.length}!</div></div>`;
     const mail = this.h.mail();
@@ -1640,7 +1781,10 @@ export class Ui {
       html += `<h2>${esc(fam.name)} <span>${got}/${defs.length}</span></h2>`;
       if (fam.id === "halloween") html += `<div class="note">🎃 Only in Spooky Boxes, which come on Halloween!</div>`;
       html += `<div class="grid">`;
-      for (const d of defs) html += `<button class="cell${owned[d.id] ? "" : " missing"}" data-id="${d.id}"><b>${d.no}</b><img alt=""></button>`;
+      for (const d of defs) {
+        const locked = !owned[d.id] && !squishyOpen(d, full);
+        html += `<button class="cell${owned[d.id] ? "" : " missing"}${locked ? " locked" : ""}" data-id="${d.id}"><b>${d.no}</b>${locked ? `<span class="lock" aria-label="Full game">✨</span>` : ""}<img alt=""></button>`;
+      }
       html += `</div>`;
     }
     html += `<button class="done">Done</button><div class="pad"></div>`;
@@ -1667,6 +1811,7 @@ export class Ui {
           cell.classList.remove("wobble");
           void cell.offsetWidth;
           cell.classList.add("wobble");
+          if (cell.classList.contains("locked")) this.toast("This one is in the full game ✨", 1600);
         }
       });
     }
