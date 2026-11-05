@@ -111,7 +111,7 @@ export class Crew {
   ) {}
 
   /** Makes the friends out match `team` (ids with their designs and hats). */
-  setTeam(team: { id: string; def: SquishyDef; hat: string | null; mood: MoodId }[]): void {
+  setTeam(team: { id: string; def: SquishyDef; hat: string | null; mood: MoodId; dirt?: number }[]): void {
     // Keep a friend that is still out; reuse a body for a newcomer.
     const keep = new Map(this.friends.map((f) => [f.id, f]));
     const spare = this.friends.filter((f) => !team.some((t) => t.id === f.id));
@@ -137,6 +137,7 @@ export class Crew {
       }
       f.sq.setHat(t.hat);
       f.sq.mood = moodById(t.mood);
+      f.sq.setDirt(t.dirt ?? 0);
       next.push(f);
     }
     for (const f of spare) this.removeFriend(f);

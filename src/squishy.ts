@@ -13,6 +13,7 @@ import { drawSkin, SKIN_H, SKIN_W } from "./skin";
 import * as sfx from "./audio";
 import { MOODS, type Mood } from "./personality";
 import { FLY_PLANE_Z } from "./view";
+import { DUST_FROM, FLY_FROM, flyAt, makeFly, mudPins } from "./dirt";
 
 class Spring {
   x = 0;
@@ -125,6 +126,13 @@ export class Squishy {
   private skinTex: THREE.CanvasTexture | null = null;
   private partsGroup = new THREE.Group();
   private pinned: Pinned[] = [];
+  /** Mud from days without a bath (dirt.ts): spots on the body, dust puffs and, at the muddiest, a fly. */
+  private dirt = 0;
+  private mud: Pinned[] = [];
+  private buzz: ReturnType<typeof makeFly> | null = null;
+  private dust: { m: THREE.Mesh; age: number; life: number; from: THREE.Vector3 }[] = [];
+  private nextDust = 0;
+  private headTop = 1.6;
   private hat: HatRig | null = null;
   private hatId: string | null = null;
   /** Falls asleep by itself after a while with nobody playing. */
@@ -379,6 +387,98 @@ export class Squishy {
       this.pinned.push({ pin, holder, v: best });
     }
     this.faceKey = "";
+    this.buildMud();
+  }
+
+  /** How muddy it looks, 0 (clean) to DIRT_MAX. Only a look: it changes nothing else. */
+  setDirt(level: number): void {
+    if (level === this.dirt) return;
+    this.dirt = level;
+    this.buildMud();
+  }
+
+  get dirtLevel(): number {
+    return this.dirt;
+  }
+
+  private nearestVertex(dir: THREE.Vector3): number {
+    const g = this.grid.dir;
+    let best = 0;
+    let bestDot = -2;
+    for (let k = 0; k < this.grid.count; k++) {
+      const dot = g[k * 3] * dir.x + g[k * 3 + 1] * dir.y + g[k * 3 + 2] * dir.z;
+      if (dot > bestDot) {
+        bestDot = dot;
+        best = k;
+      }
+    }
+    return best;
+  }
+
+  /** Puts the mud spots for the dirt level on this body (the spots' looks are shared, so they're not disposed). */
+  private buildMud(): void {
+    for (const p of this.mud) this.partsGroup.remove(p.holder);
+    this.mud = [];
+    for (const pin of mudPins(this.dirt)) {
+      const holder = new THREE.Group();
+      holder.add(pin.obj);
+      this.partsGroup.add(holder);
+      this.mud.push({ pin, holder, v: this.nearestVertex(pin.dir) });
+    }
+    // Where the head is, for the fly to buzz round (over the hat, if it has one).
+    let top = 0;
+    for (let k = 1; k < this.pos.length; k += 3) top = Math.max(top, this.pos[k]);
+    this.headTop = top + (this.hatId ? 0.45 : 0);
+    if (this.dirt >= FLY_FROM && !this.buzz) {
+      this.buzz = makeFly();
+      this.group.add(this.buzz.obj);
+    }
+    if (this.buzz) this.buzz.obj.visible = this.dirt >= FLY_FROM;
+    if (this.dirt < DUST_FROM) for (const d of this.dust) d.m.visible = false;
+    // Place the new spots on the next frame, even when resting still.
+    this.atRest = false;
+  }
+
+  private stepDirt(dt: number): void {
+    if (this.buzz?.obj.visible) {
+      const t = this.now;
+      flyAt(t, this.headTop, this.buzz.obj.position);
+      const ahead = flyAt(t + 0.05, this.headTop, _x);
+      this.buzz.obj.rotation.y = Math.atan2(ahead.x - this.buzz.obj.position.x, ahead.z - this.buzz.obj.position.z);
+      const flap = 0.2 + Math.sin(t * 60) * 0.7;
+      for (const w of this.buzz.wings) w.hinge.rotation.z = w.side * flap;
+    }
+    if (this.dirt < DUST_FROM) return;
+    // Now and then a little puff of dust floats up off it.
+    if (this.now > this.nextDust) {
+      this.nextDust = this.now + (this.dirt >= FLY_FROM ? 0.9 : 1.8) + Math.random() * 1.2;
+      let d = this.dust.find((x) => !x.m.visible);
+      if (!d && this.dust.length < 5) {
+        const m = new THREE.Mesh(DUST_GEO, new THREE.MeshStandardMaterial({ color: "#c9b49a", transparent: true, opacity: 0, roughness: 1, depthWrite: false }));
+        this.group.add(m);
+        d = { m, age: 0, life: 1, from: new THREE.Vector3() };
+        this.dust.push(d);
+      }
+      if (d) {
+        const a = Math.random() * Math.PI * 2;
+        d.from.set(Math.sin(a) * 0.95, 0.25 + Math.random() * 0.8, Math.cos(a) * 0.7 - 0.1);
+        d.age = 0;
+        d.life = 1.4 + Math.random() * 0.6;
+        d.m.visible = true;
+      }
+    }
+    for (const d of this.dust) {
+      if (!d.m.visible) continue;
+      d.age += dt;
+      const k = d.age / d.life;
+      if (k >= 1) {
+        d.m.visible = false;
+        continue;
+      }
+      d.m.position.copy(d.from).add(_y.set(d.from.x * 0.25 * k, 0.45 * k, d.from.z * 0.25 * k));
+      d.m.scale.setScalar(0.05 + 0.1 * k);
+      (d.m.material as THREE.MeshStandardMaterial).opacity = 0.55 * Math.sin(Math.PI * k);
+    }
   }
 
   /** Babies have little high voices. */
@@ -827,6 +927,7 @@ export class Squishy {
     this.stepIdle(dt);
     this.stepFace(dt);
     this.rebuild(geometry);
+    if (this.dirt || this.buzz?.obj.visible) this.stepDirt(dt);
   }
   private frameDt = 1 / 60;
 
@@ -1119,20 +1220,23 @@ export class Squishy {
 
   /** Moves each extra to its spot on the squished surface, standing along the surface normal. */
   private placeParts(nrm: Float32Array): void {
-    for (const { pin, holder, v } of this.pinned) {
-      const i = v * 3;
-      _y.set(nrm[i], nrm[i + 1], nrm[i + 2]);
-      const ref = REF[pin.ref];
-      _z.copy(ref).addScaledVector(_y, -ref.dot(_y));
-      if (_z.lengthSq() < 1e-4) _z.set(0, 0, 1).addScaledVector(_y, -_y.z);
-      _z.normalize();
-      _x.crossVectors(_y, _z);
-      _m.makeBasis(_x, _y, _z);
-      holder.quaternion.setFromRotationMatrix(_m);
-      holder.position.set(this.pos[i], this.pos[i + 1], this.pos[i + 2]).addScaledVector(_y, pin.lift);
-      pin.animate?.(pin.obj, this.now);
-    }
+    for (const p of this.pinned) this.placePin(p, nrm);
+    for (const p of this.mud) this.placePin(p, nrm);
     if (this.hat) this.hat.wide = seatOnRing(this.hat.seat, this.pos, this.hat.ring) / this.hat.restR;
+  }
+
+  private placePin({ pin, holder, v }: Pinned, nrm: Float32Array): void {
+    const i = v * 3;
+    _y.set(nrm[i], nrm[i + 1], nrm[i + 2]);
+    const ref = REF[pin.ref];
+    _z.copy(ref).addScaledVector(_y, -ref.dot(_y));
+    if (_z.lengthSq() < 1e-4) _z.set(0, 0, 1).addScaledVector(_y, -_y.z);
+    _z.normalize();
+    _x.crossVectors(_y, _z);
+    _m.makeBasis(_x, _y, _z);
+    holder.quaternion.setFromRotationMatrix(_m);
+    holder.position.set(this.pos[i], this.pos[i + 1], this.pos[i + 2]).addScaledVector(_y, pin.lift);
+    pin.animate?.(pin.obj, this.now);
   }
 
   private rebuild(geometry: boolean): void {
@@ -1285,6 +1389,7 @@ const _x = new THREE.Vector3();
 const _y = new THREE.Vector3();
 const _z = new THREE.Vector3();
 const _m = new THREE.Matrix4();
+const DUST_GEO = new THREE.SphereGeometry(1, 10, 8);
 
 function disposeTree(o: THREE.Object3D): void {
   o.traverse((c) => {

@@ -31,6 +31,8 @@ export interface Owned {
   mood: MoodId;
   /** It grew up from a baby you raised. */
   raised?: boolean;
+  /** When it last had a bath (ms): it gets a little muddier each day after (dirt.ts). */
+  washed?: number;
 }
 
 export interface Save {
@@ -117,7 +119,8 @@ export function cleanName(name: string): string {
   return name.replace(/[\u0000-\u001f<>]/g, "").trim().slice(0, NAME_MAX);
 }
 
-export function parseSave(raw: string | null): Save {
+/** `now` is when squishies from before mud came count as washed, so nobody comes back to find them all muddy. */
+export function parseSave(raw: string | null, now = Date.now()): Save {
   const base = freshSave();
   if (!raw) return base;
   let s: Record<string, unknown>;
@@ -146,7 +149,8 @@ export function parseSave(raw: string | null): Save {
     const hat = typeof rec.hat === "string" && hatById(rec.hat) ? rec.hat : "";
     // Squishies from before personalities keep the one on their design.
     const mood = isMood(rec.mood) ? rec.mood : catalogMood(defById(id)!.personality);
-    out.owned[id] = { got: count(rec.got), mood, ...(name ? { name } : {}), ...(hat ? { hat } : {}), ...(rec.raised === true ? { raised: true } : {}) };
+    const washed = typeof rec.washed === "number" && Number.isFinite(rec.washed) && rec.washed > 0 ? Math.floor(rec.washed) : now;
+    out.owned[id] = { got: count(rec.got), mood, ...(name ? { name } : {}), ...(hat ? { hat } : {}), ...(rec.raised === true ? { raised: true } : {}), washed };
   }
   out.active = typeof s.active === "string" && out.owned[s.active] ? s.active : (Object.keys(out.owned)[0] ?? null);
   out.tutorial = s.tutorial === "done" ? "done" : strings(s.tutorial);
@@ -222,7 +226,7 @@ export function collect(s: Save, id: string, now: number, mood: MoodId): { isNew
     s.stars += 5;
     return { isNew: false, stars: 5 };
   }
-  s.owned[id] = { got: now, mood };
+  s.owned[id] = { got: now, mood, washed: now };
   return { isNew: true, stars: 0 };
 }
 
@@ -277,7 +281,7 @@ export function growUp(s: Save, now: number): GrownUp[] {
       if (b.name && !had.name) had.name = b.name;
       s.stars += 5;
     } else {
-      s.owned[b.kind] = { got: now, mood, raised: true, ...(b.name ? { name: b.name } : {}) };
+      s.owned[b.kind] = { got: now, mood, raised: true, ...(b.name ? { name: b.name } : {}), washed: now };
       if (!s.active) s.active = b.kind;
       else if (s.team.length < TEAM_MAX) s.team.push(b.kind);
     }
@@ -329,6 +333,12 @@ export function addHat(s: Save, id: string): boolean {
   if (!hatById(id) || s.hats.includes(id)) return false;
   s.hats.push(id);
   return true;
+}
+
+/** A whole bath: `id` is clean again from `d`'s day. */
+export function wash(s: Save, id: string, d: Date): void {
+  const o = s.owned[id];
+  if (o) o.washed = d.getTime();
 }
 
 export function nameOf(s: Save, id: string): string {

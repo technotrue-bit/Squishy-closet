@@ -25,7 +25,12 @@ describe("move to a new phone", () => {
     const s = fullSave();
     const code = await encodeSave(s);
     expect(code.startsWith("a2")).toBe(true);
-    expect(await decodeSave(code)).toEqual(s);
+    // Mud doesn't travel: squishies arrive on the new phone fresh from a bath.
+    const before = Date.now();
+    const back = (await decodeSave(code))!;
+    for (const o of Object.values(back.owned)) expect(o.washed).toBeGreaterThanOrEqual(before);
+    for (const o of [...Object.values(back.owned), ...Object.values(s.owned)]) delete o.washed;
+    expect(back).toEqual(s);
   });
 
   it("still reads codes made before squishies were packed as rows", async () => {
