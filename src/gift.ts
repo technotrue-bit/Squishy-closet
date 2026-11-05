@@ -116,6 +116,6 @@ export function openGift(s: Save, now: number): Opened | null {
     s.stars += REPEAT_STARS;
     return { gift, isNew: false, stars: REPEAT_STARS, newHat };
   }
-  s.owned[gift.id] = { got: now, mood: gift.mood, ...(gift.hat ? { hat: gift.hat } : {}) };
+  s.owned[gift.id] = { got: now, mood: gift.mood, ...(gift.hat ? { hat: gift.hat } : {}), washed: now };
   return { gift, isNew: true, stars: 0, newHat };
 }

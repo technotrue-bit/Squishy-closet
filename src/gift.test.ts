@@ -76,7 +76,7 @@ describe("squishy mail", () => {
     const got = openGift(to, 9)!;
     expect(got.isNew).toBe(true);
     expect(got.newHat).toBe(hat);
-    expect(to.owned[def.id]).toEqual({ got: 9, mood: "silly", hat });
+    expect(to.owned[def.id]).toEqual({ got: 9, mood: "silly", hat, washed: 9 });
     expect(to.hats).toContain(hat);
     expect(to.inbox).toEqual([]);
     expect(openGift(to, 10)).toBeNull();

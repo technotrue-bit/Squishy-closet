@@ -42,7 +42,9 @@ import {
   TEAM_MAX,
   ZOOM_MAX,
   ZOOM_MIN,
+  wash,
 } from "./save";
+import { dirtOf, muddyWords } from "./dirt";
 import * as sfx from "./audio";
 import { BOTTOM_Y } from "./bao";
 import { fitCamera, flyBounds, swayCamera, groundView } from "./view";
@@ -73,7 +75,7 @@ import {
   type Baby,
 } from "./babies";
 import { wishFor, wishWords } from "./wishes";
-import { careGame, doCare, doneToday, leftToday, type CareId } from "./care";
+import { careGame, dayKey, doCare, doneToday, leftToday, type CareId } from "./care";
 import { clearTestUnlock, FREE_PLACES, fullWhy, hasFull, locksOn, placeOpen, squishyOpen, TEST_BUILD, writeUnlock } from "./unlock";
 import { shop, testShop, type BuyResult } from "./payments";
 import { watchApple } from "./apple";
@@ -268,12 +270,39 @@ squishy.home.copy(FLOOR_HOME);
 squishy.group.position.copy(squishy.home);
 squishy.setHat(hatOf(save.active));
 squishy.mood = moodById(moodIdOf(save.active));
+squishy.setDirt(dirtOfId(save.active));
 stage.scene.add(squishy.group);
 
 /** Shows `id` as the one you hold: its design, hat and personality. */
 function showHeld(def: SquishyDef, id: string): void {
   squishy.setDesign(def, hatOf(id));
   squishy.mood = moodById(moodIdOf(id));
+  squishy.setDirt(dirtOfId(id));
+}
+
+/** How muddy a squishy is today, from its last bath (dirt.ts). Only a look. */
+function dirtOfId(id: string | null): number {
+  return id ? dirtOf(save.owned[id]?.washed, today()) : 0;
+}
+
+/** Brings the mud up to date on the one you hold and the friends out (a new day may have passed). */
+function refreshDirt(): void {
+  if (screen !== "bath") squishy.setDirt(dirtOfId(save.active));
+  for (const f of crew.friends) f.sq.setDirt(dirtOfId(f.id));
+}
+
+/** Coming back to a muddy squishy: a gentle nudge toward the bath, once a day. */
+let muddyTold = "";
+function tellMuddy(): void {
+  if (save.tutorial !== "done" || !save.active) return;
+  const key = dayKey(today());
+  const level = dirtOfId(save.active);
+  if (muddyTold === key || !level) return;
+  muddyTold = key;
+  const who = save.active;
+  setTimeout(() => {
+    if (screen === "closet" && !ui.busy && save.active === who) ui.toast(muddyWords(nameOf(save, who), level), 3000);
+  }, 1500);
 }
 
 // ---- friends and places -------------------------------------------------
@@ -305,7 +334,7 @@ const crew = new Crew(stage.scene, squishy, stage.shadowMat, {
 
 function syncTeam(): void {
   crew.setTeam(
-    save.team.filter((id) => defById(id)).map((id) => ({ id, def: defById(id)!, hat: hatOf(id), mood: moodIdOf(id) })),
+    save.team.filter((id) => defById(id)).map((id) => ({ id, def: defById(id)!, hat: hatOf(id), mood: moodIdOf(id), dirt: dirtOfId(id) })),
   );
 }
 
@@ -1208,10 +1237,11 @@ function setScreen(s: Screen): void {
   if (s === "closet") {
     checkGrowUp();
     refreshMeters();
+    refreshDirt();
     refreshShelf();
     refreshSpooky();
     ui.setCareReady(save.tutorial === "done");
-    introCare();
+    if (!introCare()) tellMuddy();
     if (tutorialStep()) showTutorial();
     else if (pointAtOpen && save.boxes > 0) ui.hint("You earned a box!", "Tap Open to see who's inside");
     else if (pointAtSpooky && save.spookyBoxes > 0) ui.hint("Happy Halloween!", "Tap the pumpkin to open your Spooky Box");
@@ -1378,6 +1408,8 @@ function startBath(): void {
   }
   fingersUp();
   squishy.wakeUp();
+  // The bath brings its own mud to scrub off.
+  squishy.setDirt(0);
   setScreen("bath");
   ui.bathStep(-1, "Bath time!", `In you hop, ${nameOf(save, save.active)}!`);
   bath.start();
@@ -1390,6 +1422,7 @@ function endBath(clean: boolean): void {
   squishy.basket.r = 0;
   squishy.placeAt(FLOOR_HOME);
   squishy.hello();
+  if (clean && save.active) wash(save, save.active, today());
   setScreen("closet");
   if (!clean) return;
   save.baths++;
@@ -1417,13 +1450,14 @@ function refreshCare(): void {
 }
 
 /** Once, after learning to play: point out the Care button (and that the bath lives there now). */
-function introCare(): void {
-  if (save.tutorial !== "done" || pointAtOpen || pointAtSpooky || !save.active || save.seen.includes("care")) return;
+function introCare(): boolean {
+  if (save.tutorial !== "done" || pointAtOpen || pointAtSpooky || !save.active || save.seen.includes("care")) return false;
   save.seen.push("care");
   persist();
   setTimeout(() => {
     if (screen === "closet" && !ui.busy) ui.toast("New! Tap Care for a snack, a bath, a nap and play 💗", 3200);
   }, 1200);
+  return true;
 }
 
 /** A snack, a nap or play with the one you hold: a little game together. The bath has its own screen. */
@@ -2036,5 +2070,10 @@ if (location.hash.startsWith(HASH) && findGift(location.hash)) {
 document.addEventListener("visibilitychange", () => {
   last = performance.now();
   // Back the next day: four fresh care things.
-  if (!document.hidden && screen === "closet") refreshCare();
+  if (!document.hidden && screen === "closet") {
+    refreshCare();
+    // ...and a day's more mud, if there's been no bath.
+    refreshDirt();
+    tellMuddy();
+  }
 });
