@@ -198,11 +198,12 @@ export function buildStage(renderer?: THREE.WebGLRenderer): Stage {
     fitFog();
     fill.color.set(p.light[0]);
     fill.groundColor.set(p.light[1]);
-    // An evening glow: a softer, warmer key and a purple rim round every squishy.
-    key.color.set(p.night ? "#fff0e2" : "#ffffff");
-    key.intensity = p.night ? 1.85 : 2.1;
-    rim.color.set(p.night ? "#b48cff" : "#ffd2f2");
-    rim.intensity = p.night ? 1.7 : 1.1;
+    // An evening glow: a softer, warmer key and a purple rim round every squishy. A golden autumn afternoon: warm
+    // sunlight and an amber rim.
+    key.color.set(p.night ? "#fff0e2" : p.golden ? "#fff0d6" : "#ffffff");
+    key.intensity = p.night ? 1.85 : p.golden ? 2.05 : 2.1;
+    rim.color.set(p.night ? "#b48cff" : p.golden ? "#ffbf80" : "#ffd2f2");
+    rim.intensity = p.night ? 1.7 : p.golden ? 1.3 : 1.1;
     homeBox.position.copy(p.box.at);
     homeBox.rotation.y = p.box.yaw;
   };

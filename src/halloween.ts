@@ -245,6 +245,24 @@ export interface Lantern {
   light(k: number): void;
 }
 
+/** A plain pumpkin (no face) `r` across its middle, for autumn's harvest; `body` hops and squashes. */
+export function pumpkin(r: number, color = "#ff9a3c", squat = 0.8): { obj: THREE.Group; body: THREE.Group } {
+  const obj = new THREE.Group();
+  const body = new THREE.Group();
+  const shape = new THREE.Group();
+  shape.scale.set(r, r * squat, r);
+  shape.position.y = r * squat * 0.975;
+  add(shape, pumpkinGeo(), std(color, { roughness: 0.5 }));
+  const stem = add(body, stemGeo(), stemMat(), 0, r * squat * 1.88, 0);
+  stem.scale.setScalar(r * 1.2);
+  const leaf = add(body, leafGeo(), leafMat(), r * 0.05, r * squat * 1.95, 0);
+  leaf.scale.setScalar(r * 1.3);
+  leaf.rotation.set(-1.2, 0.6, 0);
+  body.add(shape);
+  obj.add(body);
+  return { obj, body };
+}
+
 export function jackOLantern(r: number, kind: FaceKind = "smile", color = "#ff8a1f"): Lantern {
   const obj = new THREE.Group();
   const body = new THREE.Group();
@@ -412,18 +430,19 @@ function bunting(a: THREE.Vector3, b: THREE.Vector3, drop: number): { obj: THREE
 
 const BULB_COLORS = ["#ffb347", "#c69bff", "#b8f06a", "#ffe27a"];
 
-function lights(a: THREE.Vector3, b: THREE.Vector3, drop: number): { obj: THREE.Group; twinkle(t: number): void } {
+/** Twinkly lights on a string between two points (autumn hangs warm ones, in its own colors). */
+export function lights(a: THREE.Vector3, b: THREE.Vector3, drop: number, colors: readonly string[] = BULB_COLORS, wire = "#3a3540"): { obj: THREE.Group; twinkle(t: number): void } {
   const g = new THREE.Group();
   const curve = sag(a, b, drop);
-  add(g, new THREE.TubeGeometry(curve, 40, 0.015, 4, false), std("#3a3540"));
-  const mats = BULB_COLORS.map((c) => new THREE.MeshBasicMaterial({ color: c }));
-  const base = BULB_COLORS.map((c) => new THREE.Color(c));
+  add(g, new THREE.TubeGeometry(curve, 40, 0.015, 4, false), std(wire));
+  const mats = colors.map((c) => new THREE.MeshBasicMaterial({ color: c }));
+  const base = colors.map((c) => new THREE.Color(c));
   const bulb = new THREE.SphereGeometry(0.075, 10, 8).scale(1, 1.3, 1);
   const n = Math.max(4, Math.round(curve.getLength() / 0.45));
   // Each color of bulb is one instanced mesh, so it twinkles all together.
-  BULB_COLORS.forEach((_, c) => {
+  colors.forEach((_, c) => {
     const spots: THREE.Vector3[] = [];
-    for (let i = 1; i < n; i++) if (i % BULB_COLORS.length === c) spots.push(curve.getPointAt(i / n).add(new THREE.Vector3(0, -0.07, 0)));
+    for (let i = 1; i < n; i++) if (i % colors.length === c) spots.push(curve.getPointAt(i / n).add(new THREE.Vector3(0, -0.07, 0)));
     if (!spots.length) return;
     const im = new THREE.InstancedMesh(bulb, mats[c], spots.length);
     spots.forEach((p, k) => im.setMatrixAt(k, new THREE.Matrix4().makeTranslation(p.x, p.y, p.z)));

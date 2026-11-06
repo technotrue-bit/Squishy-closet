@@ -2,14 +2,15 @@
 // boat, a living room and a little city. Each has spots where friends do jobs (the prop at a
 // spot shows how far along the job is), spots to wander to, and its own sky.
 // Your squishy sits in front; its own box sits at the back of every place.
-// All October they dress up for Halloween (see halloween.ts).
+// All October they dress up for Halloween (see halloween.ts), and all November for cozy autumn (see autumn.ts).
 
 import * as THREE from "three";
 import { canvasTex, HOME_BOX_SCALE, LID_R, LID_REST, STEAMER_R } from "./scene";
 import { placeById, type JobDef, type PlaceId } from "./places";
 import { boxSolids, pushOut, type Solid } from "./nav";
 import { dressPlace } from "./halloween";
-import { isSpookySeason, today } from "./season";
+import { dressAutumn } from "./autumn";
+import { dressFor, today } from "./season";
 
 export interface JobSpot {
   job: JobDef;
@@ -61,8 +62,13 @@ export interface PlaceScene {
   sway(t: number): { roll: number; bob: number };
   /** An evening: the light softens and a purple glow rims every squishy (Halloween). */
   night?: boolean;
-  /** Something fun under a screen ray (a ghost, a jack-o'-lantern): it plays, and says what to show. */
-  poke?(ray: THREE.Raycaster): { at: THREE.Vector3; say: string; boo: boolean } | null;
+  /** A golden autumn afternoon: warm sunlight and a soft amber rim round every squishy. */
+  golden?: boolean;
+  /**
+   * Something fun under a screen ray (a ghost, a jack-o'-lantern, a leaf pile): it plays, and says what to show.
+   * `leaves` when it throws its own leaves about, so no candy flies out.
+   */
+  poke?(ray: THREE.Raycaster): { at: THREE.Vector3; say: string; boo: boolean; leaves?: boolean } | null;
 }
 
 const V = (x: number, z: number) => new THREE.Vector3(x, 0, z);
@@ -1452,7 +1458,9 @@ export function placeScene(id: PlaceId): PlaceScene {
   let p = cache.get(id);
   if (!p) {
     p = BUILD[id]();
-    if (isSpookySeason(today())) dressPlace(p);
+    const dress = dressFor(today());
+    if (dress === "halloween") dressPlace(p);
+    else if (dress === "autumn") dressAutumn(p);
     // Your squishy's box is solid too, and nobody stands or rests inside anything.
     p.solids.push(...homeBoxSolids(p.box.at, p.box.yaw));
     for (const spot of p.spots) pushOut(spot.at, p.solids, FRIEND_PAD);

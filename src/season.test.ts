@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dateFromQuery, isHalloween, isSpookySeason, sleepsToHalloween } from "./season";
+import { dateFromQuery, dressFor, isAutumnSeason, isHalloween, isSpookySeason, sleepsToHalloween } from "./season";
 import { freshSave, halloweenBox, parseSave, spookyFromLove } from "./save";
 
 describe("Halloween", () => {
@@ -13,6 +13,16 @@ describe("Halloween", () => {
     expect(isHalloween(oct30)).toBe(false);
     expect(isHalloween(oct31)).toBe(true);
     expect(isHalloween(nov1)).toBe(false);
+  });
+
+  it("is cozy autumn all November, and plain the rest of the year", () => {
+    expect(isAutumnSeason(nov1)).toBe(true);
+    expect(isAutumnSeason(new Date(2026, 10, 30, 23, 59))).toBe(true);
+    expect(isAutumnSeason(oct31)).toBe(false);
+    expect(isAutumnSeason(new Date(2026, 11, 1))).toBe(false);
+    expect(dressFor(oct31)).toBe("halloween");
+    expect(dressFor(nov1)).toBe("autumn");
+    expect(dressFor(new Date(2026, 6, 4))).toBeNull();
   });
 
   it("counts the sleeps until Halloween", () => {

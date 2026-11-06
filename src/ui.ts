@@ -15,6 +15,7 @@ import { CARE_IDS, CARE_INFO, PRESENT_COOKIES, PRESENT_STARS, type CareId } from
 import type { Thumbs } from "./thumbs";
 import { FREE_PLACES, inFreeGame, placeOpen, squishyOpen, type FullWhy } from "./unlock";
 import type { BuyResult } from "./payments";
+import type { Dress } from "./season";
 import qrcode from "qrcode-generator";
 
 const CSS = `
@@ -652,9 +653,9 @@ export class Ui {
     this.root.classList.toggle("bath-on", screen === "bath");
   }
 
-  /** The title says Happy Halloween all October. */
-  halloween(on: boolean): void {
-    this.root.querySelector(".title .logo small")!.textContent = on ? "Happy Halloween!" : "Squishy Island";
+  /** The title says Happy Halloween all October, and Happy Fall all November. */
+  season(dress: Dress): void {
+    this.root.querySelector(".title .logo small")!.textContent = dress === "halloween" ? "Happy Halloween!" : dress === "autumn" ? "Happy Fall! 🍂" : "Squishy Island";
   }
 
   /** Care (and the bath inside it) can start once the tutorial is done. */

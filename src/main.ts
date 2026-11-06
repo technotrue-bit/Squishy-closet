@@ -18,7 +18,7 @@ import { Ui, type HandMove, type Screen, type ShelfState, type UiHandlers } from
 import { Thumbs } from "./thumbs";
 import { CATALOG, defById, type SquishyDef } from "./catalog";
 import { isOctober, openBox, openSpookyBox } from "./boxes";
-import { isSpookySeason, sleepsToHalloween, today } from "./season";
+import { dressFor, isSpookySeason, sleepsToHalloween, today } from "./season";
 import { PUMPKIN_LID_CLOSED, PUMPKIN_LID_OFF } from "./halloween";
 import { Bath, BATH_STEPS, type BathStep } from "./bath";
 import {
@@ -1380,7 +1380,7 @@ const ui = new Ui(
   thumbs,
   save.sound,
 );
-ui.halloween(isSpookySeason(today()));
+ui.season(dressFor(today()));
 ui.setTray(save.trayDown, false);
 
 // ---- bath time ----------------------------------------------------------
@@ -1417,7 +1417,7 @@ const bath = new Bath(
     },
     done: () => endBath(true),
   },
-  isSpookySeason(today()),
+  dressFor(today()),
 );
 /** After a bath the one you hold sparkles for a while. */
 let freshUntil = 0;
@@ -1708,13 +1708,13 @@ canvas.addEventListener("pointerdown", (e) => {
       visitors.tap(v);
       return;
     }
-    // Halloween decorations play back: ghosts say boo, jack-o'-lanterns hop.
+    // Halloween decorations play back: ghosts say boo, jack-o'-lanterns hop. In autumn leaves fly and pumpkins hop.
     const pk = placeScene(placeId).poke?.(ray);
     if (pk) {
       if (pk.boo) sfx.boo(0.9 + Math.random() * 0.4);
       else {
         sfx.boing(1.1);
-        fx.emit("candy", pk.at, 3);
+        if (!pk.leaves) fx.emit("candy", pk.at, 3);
       }
       fx.emit(pk.boo ? "smoke" : "sparkle", pk.at, 4);
       giveLove(1);
