@@ -8,6 +8,8 @@ import * as THREE from "three";
 import type { Fx, Squishy } from "./squishy";
 import { BOTTOM_Y, CENTER_Y } from "./bao";
 import { tinyWitchHat } from "./halloween";
+import { tinyBeanie } from "./autumn";
+import type { Dress } from "./season";
 import * as sfx from "./audio";
 
 export type BathStep = "fill" | "scrub" | "rinse" | "dry";
@@ -105,7 +107,7 @@ function stripes(a: string, b: string): THREE.CanvasTexture {
   return t;
 }
 
-function duck(spooky: boolean): THREE.Group {
+function duck(dress: Dress): THREE.Group {
   const g = new THREE.Group();
   const yellow = phys("#ffd84d", { clearcoat: 1, roughness: 0.25 });
   mesh(g, new THREE.SphereGeometry(0.17, 20, 14), yellow).scale.set(1.25, 0.8, 1);
@@ -115,9 +117,13 @@ function duck(spooky: boolean): THREE.Group {
   for (const s of [-1, 1]) mesh(g, new THREE.SphereGeometry(0.018, 8, 6), phys("#1d1d28"), 0.19, 0.2, s * 0.055);
   const tail = mesh(g, new THREE.ConeGeometry(0.07, 0.12, 10), yellow, -0.2, 0.06, 0);
   tail.rotation.z = 0.9;
-  if (spooky) {
+  if (dress === "halloween") {
     const h = tinyWitchHat(0.2);
     h.position.set(0.11, 0.25, 0);
+    g.add(h);
+  } else if (dress === "autumn") {
+    const h = tinyBeanie(0.18);
+    h.position.set(0.11, 0.22, 0);
     g.add(h);
   }
   return g;
@@ -185,9 +191,10 @@ function shower(): THREE.Group {
   return g;
 }
 
-function towel(spooky: boolean): THREE.Group {
+function towel(dress: Dress): THREE.Group {
   const g = new THREE.Group();
-  const m = new THREE.MeshPhysicalMaterial({ map: spooky ? stripes("#ff9a3c", "#8a5cf0") : stripes("#ffd6e6", "#ffffff"), roughness: 0.95, sheen: 1, sheenColor: new THREE.Color("#ffffff") });
+  const map = dress === "halloween" ? stripes("#ff9a3c", "#8a5cf0") : dress === "autumn" ? stripes("#f08a24", "#fff1dc") : stripes("#ffd6e6", "#ffffff");
+  const m = new THREE.MeshPhysicalMaterial({ map, roughness: 0.95, sheen: 1, sheenColor: new THREE.Color("#ffffff") });
   const body = mesh(g, new THREE.CapsuleGeometry(0.07, 0.5, 6, 12), m);
   body.scale.set(5, 1, 1);
   body.rotation.x = Math.PI / 2;
@@ -273,7 +280,7 @@ export class Bath {
     private squishy: Squishy,
     private camera: THREE.Camera,
     private ev: BathEvents,
-    spooky: boolean,
+    dress: Dress,
   ) {
     const shell = new THREE.LatheGeometry(
       [
@@ -294,7 +301,7 @@ export class Bath {
       ].map(([r, y]) => new THREE.Vector2(r, y)),
       72,
     );
-    const tubMat = phys(spooky ? "#d8c2ff" : "#ffc6df", { side: THREE.DoubleSide, clearcoat: 1, roughness: 0.25 });
+    const tubMat = phys(dress === "halloween" ? "#d8c2ff" : dress === "autumn" ? "#ffd2b4" : "#ffc6df", { side: THREE.DoubleSide, clearcoat: 1, roughness: 0.25 });
     const tub = mesh(this.tubBody, shell, tubMat);
     tub.scale.set(TUB_X, 1, TUB_Z);
     // Golden claw feet.
@@ -313,17 +320,17 @@ export class Bath {
     this.water = mesh(this.tubBody, new THREE.CircleGeometry(1, 48).rotateX(-Math.PI / 2), this.waterMat);
     this.water.renderOrder = 1;
     // Suds round the edge of the water.
-    const sudsMat = new THREE.MeshStandardMaterial({ color: spooky ? "#f3ecff" : "#ffffff", roughness: 0.4, emissive: new THREE.Color("#ffffff"), emissiveIntensity: 0.15 });
+    const sudsMat = new THREE.MeshStandardMaterial({ color: dress === "halloween" ? "#f3ecff" : "#ffffff", roughness: 0.4, emissive: new THREE.Color("#ffffff"), emissiveIntensity: 0.15 });
     for (let i = 0; i < 22; i++) {
       const s = mesh(this.tubBody, this.foamGeo, sudsMat);
       s.userData.a = (i / 22) * Math.PI * 2 + Math.sin(i * 3) * 0.1;
       s.userData.r = 0.08 + ((i * 7) % 5) * 0.022;
       this.suds.push(s);
     }
-    this.duck = duck(spooky);
+    this.duck = duck(dress);
     this.tubBody.add(this.duck);
     this.showerHead = shower();
-    this.towel = towel(spooky);
+    this.towel = towel(dress);
     this.group.add(this.tubBody, this.showerHead, this.towel);
     this.group.visible = false;
     scene.add(this.group);

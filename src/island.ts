@@ -1,10 +1,12 @@
 // Squishy Island, the title screen: a round pastel island in a calm sea, the
 // Squishy Closet in the middle and eight places around it where squishies
 // live. Little buns hop about while the camera drifts slowly round. Spooky
-// Hollow lights up in October, and the whole island dresses up for Halloween.
+// Hollow lights up in October, and the whole island dresses up for Halloween. In November it glows golden for
+// cozy autumn.
 
 import * as THREE from "three";
 import { dressIsland, tinyWitchHat } from "./halloween";
+import { dressIslandAutumn } from "./autumn";
 
 export interface Island {
   scene: THREE.Scene;
@@ -262,16 +264,24 @@ function miniBun(color: string, hat = false): THREE.Object3D {
 
 export function buildIsland(date = new Date()): Island {
   const october = date.getMonth() === 9;
+  const autumn = date.getMonth() === 10;
   const scene = new THREE.Scene();
   scene.background = sky();
   scene.fog = new THREE.Fog("#ffd9ea", 30, 70);
   // At Halloween: a dusky evening, with a low warm sun and a purple sea.
-  scene.add(october ? new THREE.HemisphereLight("#e2d4ff", "#ffb88a", 1.35) : new THREE.HemisphereLight("#ffffff", "#bfe6ff", 1.5));
-  const sun = new THREE.DirectionalLight(october ? "#ffd9b8" : "#fff6e8", october ? 1.9 : 2.2);
+  // In autumn: a golden afternoon, with warm sunlight and grass going gold.
+  scene.add(
+    october
+      ? new THREE.HemisphereLight("#e2d4ff", "#ffb88a", 1.35)
+      : autumn
+        ? new THREE.HemisphereLight("#fff0dc", "#ffc890", 1.45)
+        : new THREE.HemisphereLight("#ffffff", "#bfe6ff", 1.5),
+  );
+  const sun = new THREE.DirectionalLight(october ? "#ffd9b8" : autumn ? "#ffe6c0" : "#fff6e8", october ? 1.9 : autumn ? 2.1 : 2.2);
   sun.position.set(-6, 12, 8);
   scene.add(sun);
 
-  const sea = new THREE.Mesh(new THREE.CircleGeometry(60, 64), mat(october ? "#7f86d8" : "#8fd8f0", { roughness: 0.35 }));
+  const sea = new THREE.Mesh(new THREE.CircleGeometry(60, 64), mat(october ? "#7f86d8" : autumn ? "#9fd6e0" : "#8fd8f0", { roughness: 0.35 }));
   sea.rotation.x = -Math.PI / 2;
   scene.add(sea);
   const foams: THREE.Mesh[] = [];
@@ -285,7 +295,7 @@ export function buildIsland(date = new Date()): Island {
 
   const sand = sphere(6.6, "#ffe2b0", { roughness: 0.9 });
   sand.scale.set(1, 0.14, 1);
-  const grass = sphere(5.9, "#bfeaa0", { roughness: 0.85 });
+  const grass = sphere(5.9, autumn ? "#d6dc8c" : "#bfeaa0", { roughness: 0.85 });
   grass.scale.set(1, 0.16, 1);
   grass.position.y = 0.22;
   scene.add(sand, grass);
@@ -319,7 +329,7 @@ export function buildIsland(date = new Date()): Island {
   const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 200);
   // Grass height at a distance from the middle.
   const groundAt = (r: number) => 0.22 + 0.16 * Math.sqrt(Math.max(0, 5.9 * 5.9 - r * r));
-  const party = october ? dressIsland(scene, groundAt) : null;
+  const party = october ? dressIsland(scene, groundAt) : autumn ? dressIslandAutumn(scene, groundAt) : null;
   let dist = 20;
   const look = new THREE.Vector3(0, 1.1, 0);
 

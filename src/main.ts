@@ -13,12 +13,13 @@ import { Gestures, type GestureEvent } from "./gestures";
 import { Squishy, type Bounds } from "./squishy";
 import { buildStage, BASKET_FLOOR, BASKET_WALL, canvasTex, LID_CLOSED, LID_REST } from "./scene";
 import { buildIsland } from "./island";
+import { isPoster, posterSave } from "./poster";
 import { Effects } from "./fx";
 import { Ui, type HandMove, type Screen, type ShelfState, type UiHandlers } from "./ui";
 import { Thumbs } from "./thumbs";
 import { CATALOG, defById, type SquishyDef } from "./catalog";
 import { isOctober, openBox, openSpookyBox } from "./boxes";
-import { isSpookySeason, sleepsToHalloween, today } from "./season";
+import { dressFor, isSpookySeason, sleepsToHalloween, today } from "./season";
 import { PUMPKIN_LID_CLOSED, PUMPKIN_LID_OFF } from "./halloween";
 import { Bath, BATH_STEPS, type BathStep } from "./bath";
 import {
@@ -96,7 +97,9 @@ renderer.toneMappingExposure = 1.0;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 app.appendChild(renderer.domElement);
 
-const save = loadSave();
+/** The poster for TrueAIGaming's game card (see poster.ts): a made-up collection that is never saved. */
+const poster = isPoster(location.search);
+const save = poster ? posterSave(dressFor(today()), Date.now()) : loadSave();
 sfx.setSound(save.sound);
 const stage = buildStage(renderer);
 const island = buildIsland(today());
@@ -113,6 +116,7 @@ let trayGoal = trayK;
 let trayT = trayK;
 let keepAsked = false;
 const persist = () => {
+  if (poster) return;
   storeSave(save);
   // Once there is something to lose, ask the browser to keep it.
   if (!keepAsked && Object.keys(save.owned).length) {
@@ -1380,7 +1384,7 @@ const ui = new Ui(
   thumbs,
   save.sound,
 );
-ui.halloween(isSpookySeason(today()));
+ui.season(dressFor(today()));
 ui.setTray(save.trayDown, false);
 
 // ---- bath time ----------------------------------------------------------
@@ -1417,7 +1421,7 @@ const bath = new Bath(
     },
     done: () => endBath(true),
   },
-  isSpookySeason(today()),
+  dressFor(today()),
 );
 /** After a bath the one you hold sparkles for a while. */
 let freshUntil = 0;
@@ -1708,13 +1712,13 @@ canvas.addEventListener("pointerdown", (e) => {
       visitors.tap(v);
       return;
     }
-    // Halloween decorations play back: ghosts say boo, jack-o'-lanterns hop.
+    // Halloween decorations play back: ghosts say boo, jack-o'-lanterns hop. In autumn leaves fly and pumpkins hop.
     const pk = placeScene(placeId).poke?.(ray);
     if (pk) {
       if (pk.boo) sfx.boo(0.9 + Math.random() * 0.4);
       else {
         sfx.boing(1.1);
-        fx.emit("candy", pk.at, 3);
+        if (!pk.leaves) fx.emit("candy", pk.at, 3);
       }
       fx.emit(pk.boo ? "smoke" : "sparkle", pk.at, 4);
       giveLove(1);
@@ -2067,7 +2071,10 @@ goPlace(save.place, true);
 syncTeam();
 syncBabies();
 ui.setMail(save.inbox.length);
-setScreen("title");
+if (poster) {
+  ui.poster(dressFor(today()));
+  setScreen("closet");
+} else setScreen("title");
 requestAnimationFrame(frame);
 
 // ---- squishies from another phone ---------------------------------------
@@ -2083,7 +2090,9 @@ function bringIn(other: Save): void {
 
 // A move link opened on this phone: the code is in the #fragment, which never reaches a server.
 // Squishy mail from a friend comes in the same spot.
-if (location.hash.startsWith(HASH) && findGift(location.hash)) {
+if (poster) {
+  // The poster takes in no squishy mail and no move links.
+} else if (location.hash.startsWith(HASH) && findGift(location.hash)) {
   const code = findGift(location.hash);
   history.replaceState(null, "", location.pathname + location.search);
   ui.toast(takeGift(code, location.hash), 2600);

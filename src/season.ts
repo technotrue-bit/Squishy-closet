@@ -1,4 +1,4 @@
-// When it is Halloween in Aurora's World. All of October every place dresses up for a cozy, spooky evening and
+// When it is Halloween in Aurora's World, and when it is cozy autumn. All of October every place dresses up for a cozy, spooky evening and
 // Spooky Hollow lights up on the island. On Halloween itself (October 31) a Spooky Box comes for everyone, and every
 // box earned with love that day is a Spooky Box too. A grown-up can try any day by adding ?date=2026-10-31 to the
 // game's address.
@@ -7,6 +7,13 @@ import { isOctober } from "./boxes";
 
 /** The spooky season: all of October. */
 export const isSpookySeason = (d: Date): boolean => isOctober(d);
+
+/** Cozy autumn: all of November, after Halloween and on into the holidays. */
+export const isAutumnSeason = (d: Date): boolean => d.getMonth() === 10;
+
+/** How the places dress up today: spooky in October, cozy autumn in November, or just as they are. */
+export type Dress = "halloween" | "autumn" | null;
+export const dressFor = (d: Date): Dress => (isSpookySeason(d) ? "halloween" : isAutumnSeason(d) ? "autumn" : null);
 
 /** Halloween itself, October 31, by the phone's own clock. */
 export const isHalloween = (d: Date): boolean => d.getMonth() === 9 && d.getDate() === 31;
