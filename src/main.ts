@@ -80,6 +80,7 @@ import { clearTestUnlock, FREE_PLACES, fullWhy, hasFull, locksOn, placeOpen, squ
 import { shop, testShop, type BuyResult } from "./payments";
 import { watchApple } from "./apple";
 import { inApp } from "./native";
+import { hideLoading } from "./loading";
 
 const app = document.getElementById("app")!;
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
@@ -1945,6 +1946,7 @@ function frame(): void {
   if (screen === "title") {
     island.update(dt, now);
     renderer.render(island.scene, island.camera);
+    drawn();
     requestAnimationFrame(frame);
     return;
   }
@@ -2022,7 +2024,16 @@ function frame(): void {
     (stage.shadow.material as THREE.MeshBasicMaterial).opacity = s;
   }
   renderer.render(stage.scene, camera);
+  drawn();
   requestAnimationFrame(frame);
+}
+
+let firstDrawn = false;
+/** After the first picture is drawn, the loading screen goes on the next frame, once that picture is showing. */
+function drawn(): void {
+  if (firstDrawn) return;
+  firstDrawn = true;
+  requestAnimationFrame(hideLoading);
 }
 
 // Players from before hats came get the party hat too.
