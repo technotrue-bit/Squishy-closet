@@ -20,7 +20,7 @@ import qrcode from "qrcode-generator";
 const CSS = `
 .ui { position: fixed; inset: 0; pointer-events: none; font-family: ui-rounded, "SF Pro Rounded", "Arial Rounded MT Bold", "Nunito", system-ui, sans-serif; color: #5a2a4a; -webkit-user-select: none; user-select: none; }
 .ui button { pointer-events: auto; font: inherit; color: inherit; border: 0; cursor: pointer; -webkit-tap-highlight-color: transparent; }
-.ui .layer { position: absolute; inset: 0; display: none; }
+.ui .layer { position: absolute; inset: 0; display: none; isolation: isolate; } /* keeps a layer's z-indexes (the shelf tab) under the Book and other overlays */
 .ui .layer.on { display: block; }
 .ui .round { width: 50px; height: 50px; border-radius: 25px; background: rgba(255,255,255,0.8); box-shadow: 0 3px 0 rgba(200,110,150,0.35); display: grid; place-items: center; }
 .ui .round:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(200,110,150,0.35); }
