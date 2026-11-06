@@ -2,7 +2,7 @@
 // boat, a living room and a little city. Each has spots where friends do jobs (the prop at a
 // spot shows how far along the job is), spots to wander to, and its own sky.
 // Your squishy sits in front; its own box sits at the back of every place.
-// All October they dress up for Halloween (see halloween.ts), and all November for cozy autumn (see autumn.ts).
+// All October they dress up for Halloween (see halloween.ts), and the rest of fall for cozy autumn (see autumn.ts).
 
 import * as THREE from "three";
 import { canvasTex, HOME_BOX_SCALE, LID_R, LID_REST, STEAMER_R } from "./scene";

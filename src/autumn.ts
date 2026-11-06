@@ -1,4 +1,4 @@
-// Cozy autumn in Aurora's World. All November every place glows in a warm golden-hour light: a honey and apricot
+// Cozy autumn in Aurora's World. All through fall (outside Halloween's October) every place glows in a warm golden-hour light: a honey and apricot
 // sky with a low, soft sun, maple leaves drifting down and settling on the ground, trees gone red and gold, leaf
 // piles, pumpkins and hay bales, mugs of cocoa with steam curling up, a crackling campfire on the beach, warm
 // string lights and leaf garlands, and a little squirrel busy with its acorn. Warm and alive, to feel good on the

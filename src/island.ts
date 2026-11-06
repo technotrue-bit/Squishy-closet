@@ -1,12 +1,13 @@
 // Squishy Island, the title screen: a round pastel island in a calm sea, the
 // Squishy Closet in the middle and eight places around it where squishies
 // live. Little buns hop about while the camera drifts slowly round. Spooky
-// Hollow lights up in October, and the whole island dresses up for Halloween. In November it glows golden for
-// cozy autumn.
+// Hollow lights up in October, and the whole island dresses up for Halloween. The rest of fall it glows golden
+// for cozy autumn.
 
 import * as THREE from "three";
 import { dressIsland, tinyWitchHat } from "./halloween";
 import { dressIslandAutumn } from "./autumn";
+import { dressFor } from "./season";
 
 export interface Island {
   scene: THREE.Scene;
@@ -264,7 +265,7 @@ function miniBun(color: string, hat = false): THREE.Object3D {
 
 export function buildIsland(date = new Date()): Island {
   const october = date.getMonth() === 9;
-  const autumn = date.getMonth() === 10;
+  const autumn = dressFor(date) === "autumn";
   const scene = new THREE.Scene();
   scene.background = sky();
   scene.fog = new THREE.Fog("#ffd9ea", 30, 70);

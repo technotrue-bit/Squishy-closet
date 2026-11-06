@@ -659,13 +659,15 @@ export class Ui {
   /** The poster for the game card: every button hidden, just the logo (and the season's greeting) over the place. */
   poster(dress: Dress): void {
     this.root.classList.add("poster");
+    // Which look this is, for TrueAIGaming's card job: it retakes the card only when this changes.
+    document.documentElement.dataset.dress = dress ?? "plain";
     const logo = document.createElement("div");
     logo.className = "poster-logo";
     logo.innerHTML = `Aurora's World${dress ? `<small>${dress === "halloween" ? "Happy Halloween! 🎃" : "Happy Fall! 🍂"}</small>` : ""}`;
     this.root.appendChild(logo);
   }
 
-  /** The title says Happy Halloween all October, and Happy Fall all November. */
+  /** The title says Happy Halloween all October, and Happy Fall the rest of fall. */
   season(dress: Dress): void {
     this.root.querySelector(".title .logo small")!.textContent = dress === "halloween" ? "Happy Halloween!" : dress === "autumn" ? "Happy Fall! 🍂" : "Squishy Island";
   }
