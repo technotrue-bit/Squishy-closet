@@ -1,14 +1,15 @@
 // Every hat in the game. The first one is a gift; each place gives three for
-// jobs done there, and some turn up in Squishy Boxes. The 3D hats are built in
-// hatModels.ts; this file is only the facts.
+// jobs done there, and some turn up in Squishy Boxes. Spooky Boxes always bring
+// a spooky hat you don't have yet, and the first bath brings a shower cap. The
+// 3D hats are built in hatModels.ts; this file is only the facts.
 
-export type HatFrom = "gift" | "place" | "box";
+export type HatFrom = "gift" | "place" | "box" | "spooky" | "bath";
 
 export interface HatDef {
   id: string;
   name: string;
   from: HatFrom;
-  /** Box hats that turn up mostly in October. */
+  /** Spooky hats: box ones turn up mostly in October, and every Spooky Box brings one. */
   spooky?: boolean;
 }
 
@@ -34,6 +35,9 @@ export const HATS: HatDef[] = [
   { id: "frog", name: "Froggy Hood", from: "box" },
   { id: "witch", name: "Witch Hat", from: "box", spooky: true },
   { id: "pumpkin", name: "Pumpkin Cap", from: "box", spooky: true },
+  { id: "batBow", name: "Bat Bow", from: "spooky", spooky: true },
+  { id: "candyCorn", name: "Candy Corn Hat", from: "spooky", spooky: true },
+  { id: "showerCap", name: "Shower Cap", from: "bath" },
 ];
 
 const BY_ID = new Map(HATS.map((h) => [h.id, h]));
@@ -54,4 +58,10 @@ export function boxHat(have: readonly string[], october: boolean, rand: () => nu
     if (r < 0) return pool[i].id;
   }
   return pool[pool.length - 1].id;
+}
+
+/** A spooky hat you don't have yet, for a Spooky Box, or null when you have them all. */
+export function spookyHat(have: readonly string[], rand: () => number): string | null {
+  const pool = HATS.filter((h) => h.spooky && !have.includes(h.id));
+  return pool.length ? pool[Math.min(pool.length - 1, Math.floor(rand() * pool.length))].id : null;
 }

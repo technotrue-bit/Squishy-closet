@@ -8,11 +8,12 @@ import { drawFace, FACE_H, FACE_W, type Expression } from "./face";
 import type { SquishyDef } from "./catalog";
 import { feelFor, type Feel } from "./feel";
 import { buildParts, type PartPin } from "./parts";
-import { buildHat, type HatCtx, type HatModel } from "./hatModels";
+import { buildHat, hatFit, type HatCtx, type HatModel } from "./hatModels";
 import { drawSkin, SKIN_H, SKIN_W } from "./skin";
 import * as sfx from "./audio";
 import { MOODS, type Mood } from "./personality";
 import { FLY_PLANE_Z } from "./view";
+import { DUST_FROM, FLY_FROM, flyAt, makeFly, mudPins } from "./dirt";
 
 class Spring {
   x = 0;
@@ -29,7 +30,7 @@ class Spring {
   }
 }
 
-export type Fx = "heart" | "sparkle" | "star" | "zz" | "note" | "glimmer" | "splash";
+export type Fx = "heart" | "sparkle" | "star" | "zz" | "note" | "glimmer" | "splash" | "bat" | "smoke" | "candy" | "bubble";
 
 export interface Bounds {
   minX: number;
@@ -61,12 +62,18 @@ interface Pinned {
 }
 
 /** Extras that sit on top of the head; a hat takes their place. */
-const HEAD_PARTS = new Set(["witchHat", "stem", "leaf"]);
+const HEAD_PARTS = new Set(["witchHat", "stem", "leaf", "catEars"]);
 
 /** The hat: it lags and wobbles behind every hop, and pops up when tapped. */
 interface HatRig {
   id: string;
   model: HatModel;
+  /** Rides on the head: sits on `ring`, the row of the body where the hat's rim meets it. */
+  seat: THREE.Group;
+  ring: number;
+  /** The ring's width now against at rest: a squashed, wider head makes the hat a little wider too. */
+  restR: number;
+  wide: number;
   /** Wobbles about x and z, stretch in y. */
   wob: THREE.Group;
   /** Lifts and spins when popped. */
@@ -119,6 +126,13 @@ export class Squishy {
   private skinTex: THREE.CanvasTexture | null = null;
   private partsGroup = new THREE.Group();
   private pinned: Pinned[] = [];
+  /** Mud from days without a bath (dirt.ts): spots on the body, dust puffs and, at the muddiest, a fly. */
+  private dirt = 0;
+  private mud: Pinned[] = [];
+  private buzz: ReturnType<typeof makeFly> | null = null;
+  private dust: { m: THREE.Mesh; age: number; life: number; from: THREE.Vector3 }[] = [];
+  private nextDust = 0;
+  private headTop = 1.6;
   private hat: HatRig | null = null;
   private hatId: string | null = null;
   /** Falls asleep by itself after a while with nobody playing. */
@@ -316,6 +330,7 @@ export class Squishy {
 
     // Extras, each pinned to the vertex nearest where it belongs.
     for (const p of this.pinned) disposeTree(p.holder);
+    if (this.hat) disposeTree(this.hat.seat);
     this.partsGroup.clear();
     this.pinned = [];
     this.hat = null;
@@ -325,13 +340,23 @@ export class Squishy {
     if (model) {
       const wob = new THREE.Group();
       const pop = new THREE.Group();
-      // A little bigger than life, so it reads on a phone.
-      model.obj.scale.multiplyScalar(1.3);
+      // Sized to this head: the rim sits where the body is as wide as the hat's opening.
+      const fit = hatFit(hat!);
+      const k = fit.r / fit.fit;
+      model.obj.scale.multiply(new THREE.Vector3(k, k * (fit.sy ?? 1), k));
       pop.add(model.obj);
       wob.add(pop);
+      const seat = new THREE.Group();
+      seat.add(wob);
+      this.partsGroup.add(seat);
+      const ring = ringAt(this.grid.base, fit.r);
       this.hat = {
         id: hat!,
         model,
+        seat,
+        ring,
+        restR: ringRadius(this.grid.base, ring),
+        wide: 1,
         wob,
         pop,
         wx: new Spring(150, 8),
@@ -345,8 +370,6 @@ export class Squishy {
         lastV: new THREE.Vector3(),
         fresh: true,
       };
-      // Sits a little into the top so it hugs the bun.
-      pins.push({ obj: wob, dir: new THREE.Vector3(0, 1, 0), lift: -0.04, ref: "forward" });
     }
     for (const pin of pins) {
       let best = 0;
@@ -364,6 +387,98 @@ export class Squishy {
       this.pinned.push({ pin, holder, v: best });
     }
     this.faceKey = "";
+    this.buildMud();
+  }
+
+  /** How muddy it looks, 0 (clean) to DIRT_MAX. Only a look: it changes nothing else. */
+  setDirt(level: number): void {
+    if (level === this.dirt) return;
+    this.dirt = level;
+    this.buildMud();
+  }
+
+  get dirtLevel(): number {
+    return this.dirt;
+  }
+
+  private nearestVertex(dir: THREE.Vector3): number {
+    const g = this.grid.dir;
+    let best = 0;
+    let bestDot = -2;
+    for (let k = 0; k < this.grid.count; k++) {
+      const dot = g[k * 3] * dir.x + g[k * 3 + 1] * dir.y + g[k * 3 + 2] * dir.z;
+      if (dot > bestDot) {
+        bestDot = dot;
+        best = k;
+      }
+    }
+    return best;
+  }
+
+  /** Puts the mud spots for the dirt level on this body (the spots' looks are shared, so they're not disposed). */
+  private buildMud(): void {
+    for (const p of this.mud) this.partsGroup.remove(p.holder);
+    this.mud = [];
+    for (const pin of mudPins(this.dirt)) {
+      const holder = new THREE.Group();
+      holder.add(pin.obj);
+      this.partsGroup.add(holder);
+      this.mud.push({ pin, holder, v: this.nearestVertex(pin.dir) });
+    }
+    // Where the head is, for the fly to buzz round (over the hat, if it has one).
+    let top = 0;
+    for (let k = 1; k < this.pos.length; k += 3) top = Math.max(top, this.pos[k]);
+    this.headTop = top + (this.hatId ? 0.45 : 0);
+    if (this.dirt >= FLY_FROM && !this.buzz) {
+      this.buzz = makeFly();
+      this.group.add(this.buzz.obj);
+    }
+    if (this.buzz) this.buzz.obj.visible = this.dirt >= FLY_FROM;
+    if (this.dirt < DUST_FROM) for (const d of this.dust) d.m.visible = false;
+    // Place the new spots on the next frame, even when resting still.
+    this.atRest = false;
+  }
+
+  private stepDirt(dt: number): void {
+    if (this.buzz?.obj.visible) {
+      const t = this.now;
+      flyAt(t, this.headTop, this.buzz.obj.position);
+      const ahead = flyAt(t + 0.05, this.headTop, _x);
+      this.buzz.obj.rotation.y = Math.atan2(ahead.x - this.buzz.obj.position.x, ahead.z - this.buzz.obj.position.z);
+      const flap = 0.2 + Math.sin(t * 60) * 0.7;
+      for (const w of this.buzz.wings) w.hinge.rotation.z = w.side * flap;
+    }
+    if (this.dirt < DUST_FROM) return;
+    // Now and then a little puff of dust floats up off it.
+    if (this.now > this.nextDust) {
+      this.nextDust = this.now + (this.dirt >= FLY_FROM ? 0.9 : 1.8) + Math.random() * 1.2;
+      let d = this.dust.find((x) => !x.m.visible);
+      if (!d && this.dust.length < 5) {
+        const m = new THREE.Mesh(DUST_GEO, new THREE.MeshStandardMaterial({ color: "#c9b49a", transparent: true, opacity: 0, roughness: 1, depthWrite: false }));
+        this.group.add(m);
+        d = { m, age: 0, life: 1, from: new THREE.Vector3() };
+        this.dust.push(d);
+      }
+      if (d) {
+        const a = Math.random() * Math.PI * 2;
+        d.from.set(Math.sin(a) * 0.95, 0.25 + Math.random() * 0.8, Math.cos(a) * 0.7 - 0.1);
+        d.age = 0;
+        d.life = 1.4 + Math.random() * 0.6;
+        d.m.visible = true;
+      }
+    }
+    for (const d of this.dust) {
+      if (!d.m.visible) continue;
+      d.age += dt;
+      const k = d.age / d.life;
+      if (k >= 1) {
+        d.m.visible = false;
+        continue;
+      }
+      d.m.position.copy(d.from).add(_y.set(d.from.x * 0.25 * k, 0.45 * k, d.from.z * 0.25 * k));
+      d.m.scale.setScalar(0.05 + 0.1 * k);
+      (d.m.material as THREE.MeshStandardMaterial).opacity = 0.55 * Math.sin(Math.PI * k);
+    }
   }
 
   /** Babies have little high voices. */
@@ -388,7 +503,8 @@ export class Squishy {
   // ---- things friends do by themselves ------------------------------------
 
   /** Hops over to a spot, a few hops at a time, turning to face the way it goes. */
-  hopTo(target: THREE.Vector3, opts: { height?: number; then?: () => void } = {}): void {
+  /** Hops over to `target`; `stride` is how far each hop goes (longer hops get there sooner). */
+  hopTo(target: THREE.Vector3, opts: { height?: number; stride?: number; then?: () => void } = {}): void {
     if (this.mode === "fly" || this.mode === "dizzy") return;
     const from = this.mode === "home" ? this.home : this.group.position;
     const dx = target.x - from.x;
@@ -396,7 +512,7 @@ export class Squishy {
     const dist = Math.hypot(dx, dz);
     this.returnFrom.copy(this.group.position);
     this.home.copy(target);
-    this.retHops = Math.max(1, Math.round(dist / 0.85));
+    this.retHops = Math.max(1, Math.round(dist / (opts.stride ?? 0.85)));
     this.retTime = 0.42;
     this.retHeight = opts.height ?? 0.4;
     this.retQuiet = true;
@@ -811,6 +927,7 @@ export class Squishy {
     this.stepIdle(dt);
     this.stepFace(dt);
     this.rebuild(geometry);
+    if (this.dirt || this.buzz?.obj.visible) this.stepDirt(dt);
   }
   private frameDt = 1 / 60;
 
@@ -1103,19 +1220,23 @@ export class Squishy {
 
   /** Moves each extra to its spot on the squished surface, standing along the surface normal. */
   private placeParts(nrm: Float32Array): void {
-    for (const { pin, holder, v } of this.pinned) {
-      const i = v * 3;
-      _y.set(nrm[i], nrm[i + 1], nrm[i + 2]);
-      const ref = REF[pin.ref];
-      _z.copy(ref).addScaledVector(_y, -ref.dot(_y));
-      if (_z.lengthSq() < 1e-4) _z.set(0, 0, 1).addScaledVector(_y, -_y.z);
-      _z.normalize();
-      _x.crossVectors(_y, _z);
-      _m.makeBasis(_x, _y, _z);
-      holder.quaternion.setFromRotationMatrix(_m);
-      holder.position.set(this.pos[i], this.pos[i + 1], this.pos[i + 2]).addScaledVector(_y, pin.lift);
-      pin.animate?.(pin.obj, this.now);
-    }
+    for (const p of this.pinned) this.placePin(p, nrm);
+    for (const p of this.mud) this.placePin(p, nrm);
+    if (this.hat) this.hat.wide = seatOnRing(this.hat.seat, this.pos, this.hat.ring) / this.hat.restR;
+  }
+
+  private placePin({ pin, holder, v }: Pinned, nrm: Float32Array): void {
+    const i = v * 3;
+    _y.set(nrm[i], nrm[i + 1], nrm[i + 2]);
+    const ref = REF[pin.ref];
+    _z.copy(ref).addScaledVector(_y, -ref.dot(_y));
+    if (_z.lengthSq() < 1e-4) _z.set(0, 0, 1).addScaledVector(_y, -_y.z);
+    _z.normalize();
+    _x.crossVectors(_y, _z);
+    _m.makeBasis(_x, _y, _z);
+    holder.quaternion.setFromRotationMatrix(_m);
+    holder.position.set(this.pos[i], this.pos[i + 1], this.pos[i + 2]).addScaledVector(_y, pin.lift);
+    pin.animate?.(pin.obj, this.now);
   }
 
   private rebuild(geometry: boolean): void {
@@ -1185,6 +1306,9 @@ export class Squishy {
     h.wob.children[0].scale.set(1 - h.wy.x * 0.5, 1 + h.wy.x, 1 - h.wy.x * 0.5);
     h.pop.position.y = h.popH;
     h.pop.rotation.y = h.spin;
+    // The hat widens with a squashed head but keeps most of its height, so it never looks pulled flat.
+    // (Far friends squash by stretching the whole body; the hat then only takes a little of the stretch.)
+    h.seat.scale.set(h.wide, Math.pow(this.body.scale.y, -0.75), h.wide);
     const ctx: HatCtx = { energy: this.energy, sleeping: this.sleeping, dt };
     h.model.animate?.(this.now, ctx);
   }
@@ -1265,6 +1389,7 @@ const _x = new THREE.Vector3();
 const _y = new THREE.Vector3();
 const _z = new THREE.Vector3();
 const _m = new THREE.Matrix4();
+const DUST_GEO = new THREE.SphereGeometry(1, 10, 8);
 
 function disposeTree(o: THREE.Object3D): void {
   o.traverse((c) => {
@@ -1343,4 +1468,71 @@ function addGlitter(m: THREE.MeshPhysicalMaterial, time: { value: number }, spar
       );
   };
   m.customProgramCacheKey = () => "glitter";
+}
+
+/** How wide a row of the body is at rest, on average. */
+function ringRadius(base: Float32Array, j: number): number {
+  let sum = 0;
+  for (let i = 0; i < SEG; i++) {
+    const k = vid(i, j) * 3;
+    sum += Math.hypot(base[k], base[k + 2]);
+  }
+  return sum / SEG;
+}
+
+/** The row of the body (above the middle) whose width is closest to `r`, at rest. */
+export function ringAt(base: Float32Array, r: number): number {
+  let best = RINGS - 1;
+  let bestErr = Infinity;
+  for (let j = Math.floor(RINGS / 2); j < RINGS; j++) {
+    const err = Math.abs(ringRadius(base, j) - r);
+    if (err < bestErr) {
+      bestErr = err;
+      best = j;
+    }
+  }
+  return best;
+}
+
+const _c = new THREE.Vector3();
+const _a = new THREE.Vector3();
+const _b = new THREE.Vector3();
+const _n = new THREE.Vector3();
+
+/**
+ * Puts a hat on a ring of the (squished, leaning, dented) body: at the ring's middle, standing square to it,
+ * so it stays seated on the head whatever the body does. Returns how wide the ring is now.
+ */
+function seatOnRing(seat: THREE.Object3D, pos: Float32Array, ring: number): number {
+  _c.set(0, 0, 0);
+  for (let i = 0; i < SEG; i++) {
+    const k = vid(i, ring) * 3;
+    _c.x += pos[k];
+    _c.y += pos[k + 1];
+    _c.z += pos[k + 2];
+  }
+  _c.divideScalar(SEG);
+  // The ring's plane: cross products of spokes a quarter turn apart, summed all round.
+  _n.set(0, 0, 0);
+  const q = SEG / 4;
+  for (let i = 0; i < SEG; i += 4) {
+    const ka = vid(i, ring) * 3;
+    const kb = vid((i + q) % SEG, ring) * 3;
+    _a.set(pos[ka] - _c.x, pos[ka + 1] - _c.y, pos[ka + 2] - _c.z);
+    _b.set(pos[kb] - _c.x, pos[kb + 1] - _c.y, pos[kb + 2] - _c.z);
+    _n.add(_a.cross(_b));
+  }
+  if (_n.lengthSq() < 1e-8 || _n.y <= 0) _n.set(0, 1, 0);
+  _y.copy(_n).normalize();
+  _z.set(0, 0, 1).addScaledVector(_y, -_y.z).normalize();
+  _x.crossVectors(_y, _z);
+  _m.makeBasis(_x, _y, _z);
+  seat.quaternion.setFromRotationMatrix(_m);
+  seat.position.copy(_c);
+  let r = 0;
+  for (let i = 0; i < SEG; i += 4) {
+    const k = vid(i, ring) * 3;
+    r += Math.hypot(pos[k] - _c.x, pos[k + 1] - _c.y, pos[k + 2] - _c.z);
+  }
+  return r / (SEG / 4);
 }

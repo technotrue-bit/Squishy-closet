@@ -2,10 +2,14 @@
 // boat, a living room and a little city. Each has spots where friends do jobs (the prop at a
 // spot shows how far along the job is), spots to wander to, and its own sky.
 // Your squishy sits in front; its own box sits at the back of every place.
+// All October they dress up for Halloween (see halloween.ts).
 
 import * as THREE from "three";
-import { canvasTex } from "./scene";
+import { canvasTex, HOME_BOX_SCALE, LID_R, LID_REST, STEAMER_R } from "./scene";
 import { placeById, type JobDef, type PlaceId } from "./places";
+import { boxSolids, pushOut, type Solid } from "./nav";
+import { dressPlace } from "./halloween";
+import { isSpookySeason, today } from "./season";
 
 export interface JobSpot {
   job: JobDef;
@@ -14,6 +18,13 @@ export interface JobSpot {
   yaw: number;
   /** Shows the job: k is 0 (just started) to 1 (done); `working` while someone is at it. */
   show(k: number, working: boolean, t: number, dt: number): void;
+}
+
+export interface Roam {
+  minX: number;
+  maxX: number;
+  minZ: number;
+  maxZ: number;
 }
 
 export interface VisitPath {
@@ -34,13 +45,24 @@ export interface PlaceScene {
   spots: JobSpot[];
   /** Spots to wander to and rest at. */
   wander: THREE.Vector3[];
+  /**
+   * The open ground friends may roam over when the screen is wide (a phone on its side), behind the basket:
+   * the middles of their bodies stay inside it, so nobody walks into the sea or the wall.
+   */
+  roam: Roam;
   /** Where your squishy's own box sits, at the back. */
   box: { at: THREE.Vector3; yaw: number };
   /** Ways other squishies pass by: swimming in the sea, walking or hopping along. */
   paths: VisitPath[];
+  /** The ground footprints of the solid things here, which squishies hop around and never through. */
+  solids: Solid[];
   update(dt: number, t: number): void;
   /** The view rocks gently on the boat. */
   sway(t: number): { roll: number; bob: number };
+  /** An evening: the light softens and a purple glow rims every squishy (Halloween). */
+  night?: boolean;
+  /** Something fun under a screen ray (a ghost, a jack-o'-lantern): it plays, and says what to show. */
+  poke?(ray: THREE.Raycaster): { at: THREE.Vector3; say: string; boo: boolean } | null;
 }
 
 const V = (x: number, z: number) => new THREE.Vector3(x, 0, z);
@@ -118,6 +140,7 @@ function buildTable(): PlaceScene {
   const g = new THREE.Group();
   const table = add(g, new THREE.CircleGeometry(16, 64), std("#ffe6ee", { roughness: 0.92 }));
   table.rotation.x = -Math.PI / 2;
+  table.name = "ground";
   const dotGeo = new THREE.CircleGeometry(0.06, 16);
   const dotColors = ["#ffffff", "#ffd1e6", "#d8ccff", "#ffe9a8"];
   for (let i = 0; i < 70; i++) {
@@ -148,6 +171,7 @@ function buildTable(): PlaceScene {
   // Pour the tea: the pot tips and the cup fills.
   const teaAt = V(-2.2, -2.6);
   const pot = new THREE.Group();
+  pot.name = "teapot";
   const potBody = add(pot, new THREE.SphereGeometry(0.42, 24, 18), std("#ffffff", { roughness: 0.3 }), 0, 0.42, 0);
   potBody.scale.y = 0.85;
   add(pot, new THREE.SphereGeometry(0.16, 16, 10), std("#ff9ec4", { roughness: 0.3 }), 0, 0.8, 0);
@@ -245,7 +269,17 @@ function buildTable(): PlaceScene {
     light: ["#fff4fb", "#ffcfb8"],
     spots,
     wander: [V(-1.4, -3.8), V(2.6, -4.8), V(-2.8, -5.2), V(0, -6.2), V(-0.7, -2.2)],
+    // The tablecloth reaches far either side; the big sweets sit at the back.
+    roam: { minX: -9, maxX: 9, minZ: -6.6, maxZ: -2 },
     box: { at: V(1.1, -3.4), yaw: -0.25 },
+    solids: [
+      ...macColors.map((_, i) => ({ x: -4.6 + i * 1.1, z: -7.5, r: 0.56 })),
+      { x: 4.2, z: -7.2, r: 1.15 },
+      { x: -2.9, z: -3.1, r: 0.64 },
+      { x: -2.15, z: -3.35, r: 0.22 },
+      ...boxSolids(2.85, -3.3, 1.1, 0.8),
+      { x: 0.95, z: -4.9, r: 0.14 },
+    ],
     paths: [
       { how: "hop", from: V(-9, -6.6), to: V(9, -6.6) },
       { how: "walk", from: V(-10, -9.2), to: V(10, -9.2) },
@@ -316,10 +350,12 @@ function buildBeach(): PlaceScene {
   sandTex.repeat.set(10, 10);
   const sand = add(g, new THREE.PlaneGeometry(40, 18), std("#ffffff", { map: sandTex, roughness: 0.95 }), 0, 0, 2);
   sand.rotation.x = -Math.PI / 2;
+  sand.name = "ground";
   const seaTex = waterTex("#5cc8ec", "rgba(255,255,255,0.55)");
   seaTex.repeat.set(8, 6);
   const sea = add(g, new THREE.PlaneGeometry(80, 40), std("#ffffff", { map: seaTex, roughness: 0.25, metalness: 0.1 }), 0, -0.02, -26.5);
   sea.rotation.x = -Math.PI / 2;
+  sea.name = "sea";
   // The wet edge and foam that slides in and out.
   const wet = add(g, new THREE.PlaneGeometry(40, 1.4), std("#e9c58a", { roughness: 0.5 }), 0, 0.004, -6.4);
   wet.rotation.x = -Math.PI / 2;
@@ -337,8 +373,9 @@ function buildBeach(): PlaceScene {
   const foam = add(g, new THREE.PlaneGeometry(40, 0.9), new THREE.MeshBasicMaterial({ map: foamTex, transparent: true }), 0, 0.01, -6.9);
   foam.rotation.x = -Math.PI / 2;
   const sun = add(g, new THREE.CircleGeometry(2.6, 40), new THREE.MeshBasicMaterial({ color: "#fff3b0", fog: false }), 6, 9, -40);
-  void sun;
+  sun.name = "sun";
   const p = palm();
+  p.name = "palm";
   p.position.set(-4.4, 0, -5.4);
   g.add(p);
   const p2 = palm();
@@ -348,6 +385,7 @@ function buildBeach(): PlaceScene {
   // A far little island.
   const isle = add(g, new THREE.SphereGeometry(3, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), std("#8fd27a"), -10, -0.3, -30);
   isle.scale.y = 0.35;
+  isle.name = "isle";
 
   const J = jobs("beach");
   // Build a sandcastle: towers rise one by one, then a flag.
@@ -437,7 +475,7 @@ function buildBeach(): PlaceScene {
       c.fillRect(i * 64, 0, 64, 64);
     }
   });
-  add(umb, new THREE.ConeGeometry(1.5, 0.6, 16, 1, true), std("#ffffff", { map: canopyTex, side: THREE.DoubleSide, roughness: 0.6 }), 0, 2.35, 0);
+  add(umb, new THREE.ConeGeometry(1.5, 0.6, 16, 1, true), std("#ffffff", { map: canopyTex, side: THREE.DoubleSide, roughness: 0.6 }), 0, 2.35, 0).name = "canopy";
   umb.position.set(3.4, 0, -5.0);
   umb.rotation.z = -0.12;
   g.add(umb);
@@ -452,6 +490,7 @@ function buildBeach(): PlaceScene {
 
   // A little crab scuttling along the shore.
   const crab = new THREE.Group();
+  crab.name = "crab";
   const crabBody = add(crab, new THREE.SphereGeometry(0.2, 16, 10), std("#ff6a5a", { roughness: 0.4 }), 0, 0.14, 0);
   crabBody.scale.set(1.3, 0.7, 1);
   for (const s of [-1, 1]) {
@@ -494,7 +533,17 @@ function buildBeach(): PlaceScene {
     light: ["#f4fbff", "#ffe2b0"],
     spots,
     wander: [V(0.3, -3.0), V(1.2, -4.0), V(-2.9, -4.8), V(-1.0, -5.6), V(2.0, -5.6)],
+    // Sand all along, up to the wet edge where the waves come in.
+    roam: { minX: -12, maxX: 12, minZ: -5.6, maxZ: -2 },
     box: { at: V(-1.2, -3.9), yaw: 0.25 },
+    solids: [
+      { x: -4.4, z: -5.4, r: 0.3 },
+      { x: 5.2, z: -8.5, r: 0.3 },
+      { x: -2.75, z: -3.25, r: 0.7 },
+      { x: -1.45, z: -3.5, r: 0.2 },
+      { x: 2.95, z: -3.05, r: 0.42 },
+      { x: 3.4, z: -5.0, r: 0.12 },
+    ],
     paths: [
       { how: "swim", from: V(-10, -10), to: V(10, -10), water: -0.02 },
       { how: "swim", from: V(-12, -14.5), to: V(12, -14.5), water: -0.02 },
@@ -511,7 +560,8 @@ function buildBeach(): PlaceScene {
       (p2.userData.top as THREE.Group).rotation.z = Math.sin(t * 1.3 + 1) * 0.05;
       // The crab walks sideways back and forth.
       const cx = Math.sin(t * 0.25) * 3.5;
-      crab.position.set(cx - 1, 0, -5.9 + Math.sin(t * 0.5) * 0.15);
+      // Down at the water's edge, out of everyone's way.
+      crab.position.set(cx - 1, 0, -7.25 + Math.sin(t * 0.5) * 0.1);
       crab.rotation.z = Math.sin(t * 14) * 0.08;
       void dt;
     },
@@ -527,6 +577,7 @@ function buildBoat(): PlaceScene {
   seaTex.repeat.set(14, 14);
   const sea = add(g, new THREE.PlaneGeometry(120, 120), std("#ffffff", { map: seaTex, roughness: 0.2, metalness: 0.15 }), 0, -0.9, -20);
   sea.rotation.x = -Math.PI / 2;
+  sea.name = "sea";
   // The deck: wide at the back, pointed at the bow far away.
   const hull = new THREE.Shape();
   hull.moveTo(-5.2, 5);
@@ -556,7 +607,8 @@ function buildBoat(): PlaceScene {
   const deck = add(g, deckGeo, std("#ffffff", { map: plankTex, roughness: 0.8, side: THREE.DoubleSide }));
   deck.position.y = 0;
   // Hull sides and the rail around the edge.
-  const edge = hull.getSpacedPoints(80).map((p) => new THREE.Vector3(p.x, 0, -p.y));
+  // (The deck shape's y becomes z, so the rail follows the deck's own edge.)
+  const edge = hull.getSpacedPoints(80).map((p) => new THREE.Vector3(p.x, 0, p.y));
   const hullPath = new THREE.CatmullRomCurve3(edge.slice(0, -1), true);
   const side = add(g, new THREE.TubeGeometry(hullPath, 120, 0.12, 8, true), std("#ffffff", { roughness: 0.4 }), 0, 0.35, 0);
   void side;
@@ -569,6 +621,24 @@ function buildBoat(): PlaceScene {
     if (p.z > 4.5) continue;
     add(g, postGeo, postMat, p.x, 0.6, p.z);
   }
+  // The rail is solid: big circles just outside it, their inner edge on the rail, so nobody walks through it.
+  const railSolids: { x: number; z: number; r: number }[] = [];
+  for (let i = 0; i < 34; i++) {
+    const p = hullPath.getPoint(i / 34);
+    if (p.z > 4.5) continue;
+    const t = hullPath.getTangent(i / 34);
+    // Outward is away from the deck's middle line.
+    let nx = -t.z;
+    let nz = t.x;
+    if (nx * p.x + nz * (p.z + 3) < 0) {
+      nx = -nx;
+      nz = -nz;
+    }
+    const R = 1.4;
+    railSolids.push({ x: p.x + nx * (R - 0.12), z: p.z + nz * (R - 0.12), r: R });
+  }
+  // The life ring hangs on the inside of the rail.
+  railSolids.push({ x: -4.45, z: 0.6, r: 0.6 });
   const hullSide = add(g, new THREE.CylinderGeometry(1, 1, 1, 8), std("#ff7fb0"));
   hullSide.visible = false;
   // A far island and a lighthouse.
@@ -576,6 +646,7 @@ function buildBoat(): PlaceScene {
   isle.scale.y = 0.4;
   const isle2 = add(g, new THREE.SphereGeometry(3, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), std("#a6dd8a"), -18, -0.9, -46);
   isle2.scale.y = 0.45;
+  isle.name = isle2.name = "isle";
 
   // The mast and the big sail.
   const mast = add(g, new THREE.CylinderGeometry(0.13, 0.16, 9, 12), std("#c98d58"), 0, 4.5, -5.6);
@@ -590,14 +661,17 @@ function buildBoat(): PlaceScene {
     c.fillRect(0, 150, 64, 30);
   });
   const sail = add(g, sailGeo, std("#ffffff", { map: sailTex, side: THREE.DoubleSide, roughness: 0.8 }), 0, 0, -5.55);
+  sail.name = "sail";
   const sailBase = (sailGeo.getAttribute("position").array as Float32Array).slice();
   const flagM = add(g, new THREE.PlaneGeometry(0.9, 0.5, 6, 2), new THREE.MeshStandardMaterial({ color: "#ff5f9c", side: THREE.DoubleSide }), 0.45, 8.8, -5.6);
   const flagBase = (flagM.geometry.getAttribute("position").array as Float32Array).slice();
+  flagM.name = "flag";
   // A life ring on the rail.
   const ringM = add(g, new THREE.TorusGeometry(0.4, 0.12, 10, 24), std("#ff6a5a", { roughness: 0.4 }), -4.6, 0.6, 0.6);
   ringM.rotation.y = Math.PI / 2;
   // Seagull going round.
   const gull = new THREE.Group();
+  gull.name = "gull";
   for (const s of [-1, 1]) {
     const w = add(gull, new THREE.BoxGeometry(0.7, 0.04, 0.22), std("#ffffff"), s * 0.35, 0, 0);
     w.userData.s = s;
@@ -751,7 +825,18 @@ function buildBoat(): PlaceScene {
     light: ["#f2faff", "#d8f0ff"],
     spots,
     wander: [V(-0.6, -3.4), V(1.4, -4.4), V(-2.6, -6.8), V(2.0, -6.6), V(0.4, -9.0)],
+    // Only the deck inside the rail: the boat is narrow, so this barely grows.
+    roam: { minX: -2.6, maxX: 2.6, minZ: -6.4, maxZ: -2.2 },
     box: { at: V(1.0, -3.2), yaw: -0.25 },
+    solids: [
+      { x: 0, z: -5.6, r: 0.18 },
+      { x: -2.9, z: -3.0, r: 0.62 },
+      { x: 3.2, z: -3.0, r: 0.12 },
+      { x: 0.7, z: -8.1, r: 0.45 },
+      { x: -2.3, z: -5.6, r: 0.27 },
+      { x: -1.2, z: -5.6, r: 0.48 },
+      ...railSolids,
+    ],
     paths: [
       { how: "swim", from: V(-11, -14.5), to: V(11, -14.5), water: -0.9 },
       { how: "swim", from: V(-13, -19), to: V(13, -19), water: -0.9 },
@@ -806,6 +891,7 @@ function buildRoom(): PlaceScene {
   floorTex.repeat.set(6, 6);
   const floor = add(g, new THREE.PlaneGeometry(30, 20), std("#ffffff", { map: floorTex, roughness: 0.75 }), 0, 0, 1);
   floor.rotation.x = -Math.PI / 2;
+  floor.name = "ground";
   const rug = add(g, new THREE.CircleGeometry(2.6, 48), std("#ffc6df", { roughness: 0.95 }), 0, 0.004, -0.6);
   rug.rotation.x = -Math.PI / 2;
   rug.scale.set(1.3, 1, 1);
@@ -824,11 +910,11 @@ function buildRoom(): PlaceScene {
   });
   wallTex.wrapT = THREE.RepeatWrapping;
   wallTex.repeat.set(10, 4);
-  add(g, new THREE.PlaneGeometry(30, 12), std("#ffffff", { map: wallTex, roughness: 0.9 }), 0, 6, -8);
+  add(g, new THREE.PlaneGeometry(30, 12), std("#ffffff", { map: wallTex, roughness: 0.9 }), 0, 6, -8).name = "wall";
   add(g, new THREE.BoxGeometry(30, 0.4, 0.15), std("#ffffff"), 0, 0.2, -7.92);
   // A window with sky and curtains.
   const win = new THREE.Group();
-  add(win, new THREE.PlaneGeometry(3, 2.4), new THREE.MeshBasicMaterial({ map: skyTex("#8fd3ff", "#c9eaff", "#fff1e0"), fog: false }));
+  add(win, new THREE.PlaneGeometry(3, 2.4), new THREE.MeshBasicMaterial({ map: skyTex("#8fd3ff", "#c9eaff", "#fff1e0"), fog: false })).name = "windowSky";
   const frameMat = std("#ffffff");
   add(win, new THREE.BoxGeometry(3.2, 0.12, 0.1), frameMat, 0, 1.2, 0.02);
   add(win, new THREE.BoxGeometry(3.2, 0.12, 0.1), frameMat, 0, -1.2, 0.02);
@@ -837,6 +923,7 @@ function buildRoom(): PlaceScene {
   for (const s of [-1, 1]) add(win, new THREE.BoxGeometry(0.7, 2.9, 0.08), std("#c9a8f0", { roughness: 0.9 }), s * 1.85, 0, 0.06);
   const cloud = add(win, new THREE.SphereGeometry(0.3, 12, 8), new THREE.MeshBasicMaterial({ color: "#ffffff", fog: false }), -0.5, 0.4, 0.01);
   cloud.scale.set(1.6, 0.6, 0.1);
+  cloud.name = "windowCloud";
   win.position.set(-1.2, 3.4, -7.9);
   g.add(win);
   // The couch.
@@ -862,7 +949,7 @@ function buildRoom(): PlaceScene {
   const lamp = new THREE.Group();
   add(lamp, new THREE.CylinderGeometry(0.3, 0.35, 0.08, 16), std("#ffffff"), 0, 0.04, 0);
   add(lamp, new THREE.CylinderGeometry(0.04, 0.04, 2.4, 8), std("#ffffff"), 0, 1.24, 0);
-  add(lamp, new THREE.CylinderGeometry(0.35, 0.55, 0.6, 20, 1, true), std("#fff3b0", { emissive: new THREE.Color("#ffe9a0"), emissiveIntensity: 0.5, side: THREE.DoubleSide }), 0, 2.6, 0);
+  add(lamp, new THREE.CylinderGeometry(0.35, 0.55, 0.6, 20, 1, true), std("#fff3b0", { emissive: new THREE.Color("#ffe9a0"), emissiveIntensity: 0.5, side: THREE.DoubleSide }), 0, 2.6, 0).name = "lampShade";
   lamp.position.set(2.0, 0, -7.2);
   g.add(lamp);
 
@@ -982,7 +1069,19 @@ function buildRoom(): PlaceScene {
     light: ["#fff6ee", "#e9c49a"],
     spots,
     wander: [V(0.4, -3.0), V(-1.6, -5.4), V(0.6, -5.6), V(-2.9, -4.6), V(2.0, -3.6)],
+    // The whole rug-and-floor, in front of the back wall.
+    roam: { minX: -11, maxX: 11, minZ: -6.8, maxZ: -2 },
     box: { at: V(-1.1, -3.6), yaw: 0.25 },
+    solids: [
+      ...boxSolids(-1.2, -7.1, 4.2, 1.2),
+      ...boxSolids(-4.4, -7.4, 1.6, 0.5),
+      { x: 2.0, z: -7.2, r: 0.35 },
+      { x: -2.9, z: -3.4, r: 0.34 },
+      { x: 3.05, z: -3.15, r: 0.3 },
+      { x: 3.6, z: -6.0, r: 0.36 },
+      { x: 3.05, z: -6.05, r: 0.2 },
+      ...boxSolids(1.3, -6.6, 1.8, 0.7),
+    ],
     paths: [{ how: "walk", from: V(-9, -6.1), to: V(9, -6.1) }],
     update: (_dt, t) => {
       cloud.position.x = -0.5 + Math.sin(t * 0.1) * 0.8;
@@ -1027,6 +1126,7 @@ function buildCity(): PlaceScene {
   paverTex.repeat.set(8, 3.2);
   const plaza = add(g, new THREE.PlaneGeometry(40, 12), std("#ffffff", { map: paverTex, roughness: 0.9 }), 0, 0, 0.6);
   plaza.rotation.x = -Math.PI / 2;
+  plaza.name = "ground";
   add(g, new THREE.BoxGeometry(40, 0.16, 0.3), std("#e9dff0"), 0, 0.02, -5.4);
   const roadTex = canvasTex(256, 128, (c) => {
     c.fillStyle = "#b9b3cc";
@@ -1070,7 +1170,7 @@ function buildCity(): PlaceScene {
     wt.needsUpdate = true;
     wt.wrapS = wt.wrapT = THREE.RepeatWrapping;
     wt.repeat.set(Math.max(1, Math.round(w / 1.3)), Math.max(1, Math.round((h - 1.4) / 1.3)));
-    add(b, new THREE.PlaneGeometry(w - 0.3, h - 1.4), new THREE.MeshStandardMaterial({ map: wt, transparent: true, roughness: 0.6 }), 0, h / 2 + 0.55, 1.01);
+    add(b, new THREE.PlaneGeometry(w - 0.3, h - 1.4), new THREE.MeshStandardMaterial({ map: wt, transparent: true, roughness: 0.6 }), 0, h / 2 + 0.55, 1.01).name = "houseWindows";
     add(b, new THREE.BoxGeometry(0.7, 1.1, 0.1), std("#ffffff"), (i % 2 ? 0.5 : -0.5) * (w / 3), 0.55, 1.02);
     // Striped awnings on some.
     if (i % 3 !== 1) {
@@ -1090,14 +1190,14 @@ function buildCity(): PlaceScene {
     const t = new THREE.Group();
     add(t, new THREE.CylinderGeometry(0.42, 0.34, 0.5, 18), potMat, 0, 0.25, 0);
     add(t, new THREE.CylinderGeometry(0.07, 0.09, 1.3, 8), std("#c98d58"), 0, 1.1, 0);
-    for (const [bx, by, bz, r] of [[0, 2.0, 0, 0.62], [0.35, 1.75, 0.1, 0.42], [-0.32, 1.8, 0, 0.45]]) add(t, new THREE.SphereGeometry(r, 16, 12), leafMat, bx, by, bz);
+    for (const [bx, by, bz, r] of [[0, 2.0, 0, 0.62], [0.35, 1.75, 0.1, 0.42], [-0.32, 1.8, 0, 0.45]]) add(t, new THREE.SphereGeometry(r, 16, 12), leafMat, bx, by, bz).name = "leaves";
     t.position.set(tx, 0, tz);
     g.add(t);
   }
   for (const lx of [-8, 8]) {
     const l = new THREE.Group();
     add(l, new THREE.CylinderGeometry(0.06, 0.08, 3.2, 8), std("#9a8ab8"), 0, 1.6, 0);
-    add(l, new THREE.SphereGeometry(0.24, 14, 10), std("#fff6c8", { emissive: new THREE.Color("#ffefa0"), emissiveIntensity: 0.5 }), 0, 3.3, 0);
+    add(l, new THREE.SphereGeometry(0.24, 14, 10), std("#fff6c8", { emissive: new THREE.Color("#ffefa0"), emissiveIntensity: 0.5 }), 0, 3.3, 0).name = "streetLamp";
     l.position.set(lx, 0, -5.0);
     g.add(l);
   }
@@ -1122,7 +1222,8 @@ function buildCity(): PlaceScene {
   for (const s of [-1, 1]) add(cart, new THREE.CylinderGeometry(0.22, 0.22, 0.08, 16).rotateX(Math.PI / 2), std("#9a8ab8"), s * 0.42, 0.22, 0.42);
   add(cart, new THREE.CylinderGeometry(0.03, 0.03, 1.4, 8), std("#ffffff"), 0, 1.75, 0);
   const umb = add(cart, new THREE.ConeGeometry(0.95, 0.4, 16, 1, true), std("#7fc8f0", { side: THREE.DoubleSide, roughness: 0.7 }), 0, 2.45, 0);
-  void umb;
+  umb.name = "cartUmbrella";
+  cart.name = "cart";
   const cone = new THREE.Group();
   add(cone, new THREE.ConeGeometry(0.16, 0.42, 14).rotateX(Math.PI), std("#e8b26a"), 0, 0.21, 0);
   const scoopCols = ["#ffd6e6", "#bff0c8", "#fff1a8"];
@@ -1257,7 +1358,20 @@ function buildCity(): PlaceScene {
     light: ["#f8f6ff", "#ffe0ec"],
     spots,
     wander: [V(0.6, -2.7), V(1.2, -4.4), V(-1.5, -3.2), V(-0.2, -2.2), V(1.8, -1.2)],
+    // The plaza, short of the road.
+    roam: { minX: -12, maxX: 12, minZ: -5.2, maxZ: -1.8 },
     box: { at: V(-0.55, -4.2), yaw: 0.2 },
+    solids: [
+      ...[[-6.2, -4.8], [6.0, -4.8], [-9.5, -11], [-3.5, -11], [3, -11], [9, -11]].map(([x, z]) => ({ x, z, r: 0.42 })),
+      { x: -8, z: -5.0, r: 0.1 },
+      { x: 8, z: -5.0, r: 0.1 },
+      ...boxSolids(2.95, -3.2, 1.5, 1.2),
+      ...boxSolids(-2.45, -5.15, 2.3, 0.5),
+      ...boxSolids(3.5, -4.95, 1.6, 0.55),
+      { x: -2.85, z: -2.45, r: 0.76 },
+      { x: 3.2, z: -2.6, r: 0.35 },
+      { x: -6.0, z: -6.6, r: 0.9 },
+    ],
     paths: [
       { how: "walk", from: V(-10, -10.6), to: V(10, -10.6) },
       { how: "walk", from: V(-10, -5.0), to: V(10, -5.0) },
@@ -1276,12 +1390,73 @@ function buildCity(): PlaceScene {
 
 const BUILD: Record<PlaceId, () => PlaceScene> = { table: buildTable, beach: buildBeach, boat: buildBoat, room: buildRoom, city: buildCity };
 
+/**
+ * How far a friend's body reaches out from its middle along the ground, for not bumping into things.
+ * Measured in game: about 0.78 sitting, up to 0.95 squashed on landing from a hop, so a little more.
+ */
+export const FRIEND_PAD = 1.0;
+
+/**
+ * Your squishy's own box at the back of every place: the steamer, and its lid leaning open behind it,
+ * worked out from the model itself so nobody hops into either.
+ */
+export function homeBoxSolids(at: THREE.Vector3, yaw: number): Solid[] {
+  const k = HOME_BOX_SCALE;
+  const out: Solid[] = [{ x: at.x, z: at.z, r: STEAMER_R * k + 0.03 }];
+  // The lid's rim and thickness, as the box holds it, then turned and moved like the box.
+  const m = new THREE.Matrix4().compose(LID_REST.pos, new THREE.Quaternion().setFromEuler(LID_REST.rot), new THREE.Vector3(1, 1, 1));
+  const box = new THREE.Matrix4().compose(at, new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw), new THREE.Vector3(k, k, k));
+  m.premultiply(box);
+  const v = new THREE.Vector3();
+  const pts: { x: number; z: number }[] = [];
+  for (let i = 0; i < 48; i++) {
+    const a = (i / 48) * Math.PI * 2;
+    for (const y of [-0.12, 0.2]) {
+      v.set(Math.cos(a) * LID_R, y, Math.sin(a) * LID_R).applyMatrix4(m);
+      pts.push({ x: v.x, z: v.z });
+    }
+  }
+  // Cover the lid's footprint with a row of circles along its long side.
+  const cx = pts.reduce((n, p) => n + p.x, 0) / pts.length;
+  const cz = pts.reduce((n, p) => n + p.z, 0) / pts.length;
+  let ax = 0;
+  let az = 0;
+  for (const p of pts) {
+    const dx = p.x - cx;
+    const dz = p.z - cz;
+    if (dx * dx + dz * dz > ax * ax + az * az) {
+      ax = dx;
+      az = dz;
+    }
+  }
+  const len = Math.hypot(ax, az) || 1;
+  const ux = ax / len;
+  const uz = az / len;
+  let along = 0;
+  let across = 0;
+  for (const p of pts) {
+    along = Math.max(along, Math.abs((p.x - cx) * ux + (p.z - cz) * uz));
+    across = Math.max(across, Math.abs(-(p.x - cx) * uz + (p.z - cz) * ux));
+  }
+  const n = Math.max(1, Math.ceil(along / Math.max(0.15, across)));
+  for (let i = 0; i < n; i++) {
+    const t = n > 1 ? -along + across + (i / (n - 1)) * 2 * (along - across) : 0;
+    out.push({ x: cx + ux * t, z: cz + uz * t, r: Math.hypot(across, n > 1 ? (along - across) / (n - 1) : 0) + 0.03 });
+  }
+  return out;
+}
+
 /** Places are built the first time you go there, then kept. */
 const cache = new Map<PlaceId, PlaceScene>();
 export function placeScene(id: PlaceId): PlaceScene {
   let p = cache.get(id);
   if (!p) {
     p = BUILD[id]();
+    if (isSpookySeason(today())) dressPlace(p);
+    // Your squishy's box is solid too, and nobody stands or rests inside anything.
+    p.solids.push(...homeBoxSolids(p.box.at, p.box.yaw));
+    for (const spot of p.spots) pushOut(spot.at, p.solids, FRIEND_PAD);
+    for (const w of p.wander) pushOut(w, p.solids, FRIEND_PAD);
     for (const s of p.spots) s.show(0, false, 0, 0);
     cache.set(id, p);
   }

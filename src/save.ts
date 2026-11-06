@@ -6,9 +6,12 @@ import { hatById } from "./hats";
 import { PLACE_IDS, type PlaceId } from "./places";
 import { catalogMood, isMood, type MoodId } from "./personality";
 import { BABIES_MAX, cleanBaby, COOKIES_MAX, growLeft, moodOf, type Baby } from "./babies";
+import { cleanGift, INBOX_MAX, type Gift } from "./gift";
+import { isHalloween } from "./season";
+import { cleanCare, freshCare, type Care } from "./care";
 
 export const SAVE_KEY = "squishycloset.save";
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 6;
 /** Squishies out at once: the one you hold and up to three friends. */
 export const TEAM_MAX = 3;
 export const ZOOM_MIN = 0.85;
@@ -28,6 +31,8 @@ export interface Owned {
   mood: MoodId;
   /** It grew up from a baby you raised. */
   raised?: boolean;
+  /** When it last had a bath (ms): it gets a little muddier each day after (dirt.ts). */
+  washed?: number;
 }
 
 export interface Save {
@@ -61,6 +66,22 @@ export interface Save {
   cookies: number;
   /** Babies you're raising. */
   babies: Baby[];
+  /** Squishy mail from friends, waiting to be opened. */
+  inbox: Gift[];
+  /** Keys of gifts that came to this phone, so a link opened twice gives once. */
+  giftsGot: string[];
+  /** Keys of gifts made on this phone. */
+  giftsSent: string[];
+  /** Spooky Boxes earned on Halloween and not opened yet. */
+  spookyBoxes: number;
+  /** The year Halloween's own Spooky Box was given, 0 before the first. */
+  spookyYear: number;
+  /** Baths given. */
+  baths: number;
+  /** Today's care (a snack, a bath, a nap, play) and the days it was all done. */
+  care: Care;
+  /** The shelf and buttons are slid down out of the way, for more room to play. */
+  trayDown: boolean;
 }
 
 export const freshSave = (): Save => ({
@@ -81,6 +102,14 @@ export const freshSave = (): Save => ({
   seen: [],
   cookies: 1,
   babies: [],
+  inbox: [],
+  giftsGot: [],
+  giftsSent: [],
+  spookyBoxes: 0,
+  spookyYear: 0,
+  baths: 0,
+  care: freshCare(),
+  trayDown: false,
 });
 
 const strings = (a: unknown): string[] => (Array.isArray(a) ? a.filter((t): t is string => typeof t === "string") : []);
@@ -90,7 +119,8 @@ export function cleanName(name: string): string {
   return name.replace(/[\u0000-\u001f<>]/g, "").trim().slice(0, NAME_MAX);
 }
 
-export function parseSave(raw: string | null): Save {
+/** `now` is when squishies from before mud came count as washed, so nobody comes back to find them all muddy. */
+export function parseSave(raw: string | null, now = Date.now()): Save {
   const base = freshSave();
   if (!raw) return base;
   let s: Record<string, unknown>;
@@ -119,7 +149,8 @@ export function parseSave(raw: string | null): Save {
     const hat = typeof rec.hat === "string" && hatById(rec.hat) ? rec.hat : "";
     // Squishies from before personalities keep the one on their design.
     const mood = isMood(rec.mood) ? rec.mood : catalogMood(defById(id)!.personality);
-    out.owned[id] = { got: count(rec.got), mood, ...(name ? { name } : {}), ...(hat ? { hat } : {}), ...(rec.raised === true ? { raised: true } : {}) };
+    const washed = typeof rec.washed === "number" && Number.isFinite(rec.washed) && rec.washed > 0 ? Math.floor(rec.washed) : now;
+    out.owned[id] = { got: count(rec.got), mood, ...(name ? { name } : {}), ...(hat ? { hat } : {}), ...(rec.raised === true ? { raised: true } : {}), washed };
   }
   out.active = typeof s.active === "string" && out.owned[s.active] ? s.active : (Object.keys(out.owned)[0] ?? null);
   out.tutorial = s.tutorial === "done" ? "done" : strings(s.tutorial);
@@ -137,6 +168,18 @@ export function parseSave(raw: string | null): Save {
     const baby = cleanBaby(b, (id) => !!defById(id), cleanName);
     if (baby && out.babies.length < BABIES_MAX && !out.babies.some((o) => o.key === baby.key)) out.babies.push(baby);
   }
+  const inbox = Array.isArray(s.inbox) ? s.inbox : [];
+  for (const g of inbox) {
+    const gift = cleanGift(g);
+    if (gift && out.inbox.length < INBOX_MAX && !out.inbox.some((x) => x.key === gift.key)) out.inbox.push(gift);
+  }
+  out.giftsGot = [...new Set(strings(s.giftsGot))].slice(-300);
+  out.giftsSent = [...new Set(strings(s.giftsSent))].slice(-300);
+  out.spookyBoxes = Math.min(99, count(s.spookyBoxes));
+  out.spookyYear = count(s.spookyYear);
+  out.baths = count(s.baths);
+  out.care = cleanCare(s.care);
+  out.trayDown = s.trayDown === true;
   if (s.v === 2) {
     // New in this update: friends play together, so bring the newest ones out.
     out.team = Object.keys(out.owned)
@@ -183,8 +226,25 @@ export function collect(s: Save, id: string, now: number, mood: MoodId): { isNew
     s.stars += 5;
     return { isNew: false, stars: 5 };
   }
-  s.owned[id] = { got: now, mood };
+  s.owned[id] = { got: now, mood, washed: now };
   return { isNew: true, stars: 0 };
+}
+
+/** Halloween's own Spooky Box, once a year on Halloween. True when it was just given. */
+export function halloweenBox(s: Save, d: Date): boolean {
+  if (!isHalloween(d) || s.spookyYear === d.getFullYear()) return false;
+  s.spookyYear = d.getFullYear();
+  s.spookyBoxes = Math.min(99, s.spookyBoxes + 1);
+  return true;
+}
+
+/** Boxes just earned with love come as Spooky Boxes on Halloween. Returns how many did. */
+export function spookyFromLove(s: Save, earned: number, d: Date): number {
+  if (!isHalloween(d) || earned <= 0) return 0;
+  const n = Math.min(earned, s.boxes);
+  s.boxes -= n;
+  s.spookyBoxes = Math.min(99, s.spookyBoxes + n);
+  return n;
 }
 
 export function addCookie(s: Save, n = 1): boolean {
@@ -221,7 +281,7 @@ export function growUp(s: Save, now: number): GrownUp[] {
       if (b.name && !had.name) had.name = b.name;
       s.stars += 5;
     } else {
-      s.owned[b.kind] = { got: now, mood, raised: true, ...(b.name ? { name: b.name } : {}) };
+      s.owned[b.kind] = { got: now, mood, raised: true, ...(b.name ? { name: b.name } : {}), washed: now };
       if (!s.active) s.active = b.kind;
       else if (s.team.length < TEAM_MAX) s.team.push(b.kind);
     }
@@ -273,6 +333,12 @@ export function addHat(s: Save, id: string): boolean {
   if (!hatById(id) || s.hats.includes(id)) return false;
   s.hats.push(id);
   return true;
+}
+
+/** A whole bath: `id` is clean again from `d`'s day. */
+export function wash(s: Save, id: string, d: Date): void {
+  const o = s.owned[id];
+  if (o) o.washed = d.getTime();
 }
 
 export function nameOf(s: Save, id: string): string {

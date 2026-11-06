@@ -3,18 +3,24 @@
 // love you give earns more boxes. Up to four squishies are out at once: the
 // one you hold, and friends who play, do jobs and come up to visit behind it.
 // Play at the tea table, the beach, on a sailing boat or in the living room,
-// and dress everyone in hats. Everything stays on this device.
+// dress everyone in hats, and give your squishy a bath. All October the places
+// dress up for Halloween; on Halloween itself Spooky Boxes come, jack-o'-lanterns
+// a Halloween squishy pops out of. Each day the one you hold would love a snack, a bath, a nap and play (care.ts);
+// doing all four brings a small present. Everything stays on this device.
 
 import * as THREE from "three";
 import { Gestures, type GestureEvent } from "./gestures";
 import { Squishy, type Bounds } from "./squishy";
-import { buildStage, BASKET_FLOOR, BASKET_WALL, LID_CLOSED, LID_REST } from "./scene";
+import { buildStage, BASKET_FLOOR, BASKET_WALL, canvasTex, LID_CLOSED, LID_REST } from "./scene";
 import { buildIsland } from "./island";
 import { Effects } from "./fx";
-import { Ui, type HandMove, type Screen, type ShelfState } from "./ui";
+import { Ui, type HandMove, type Screen, type ShelfState, type UiHandlers } from "./ui";
 import { Thumbs } from "./thumbs";
 import { CATALOG, defById, type SquishyDef } from "./catalog";
-import { isOctober, openBox } from "./boxes";
+import { isOctober, openBox, openSpookyBox } from "./boxes";
+import { isSpookySeason, sleepsToHalloween, today } from "./season";
+import { PUMPKIN_LID_CLOSED, PUMPKIN_LID_OFF } from "./halloween";
+import { Bath, BATH_STEPS, type BathStep } from "./bath";
 import {
   addCookie,
   addHat,
@@ -24,30 +30,60 @@ import {
   cleanName,
   collect,
   growUp,
+  halloweenBox,
   holdSquishy,
   keepBaby,
   loadSave,
   nameOf,
   sendIn,
+  spookyFromLove,
   storeSave,
   type Save,
   TEAM_MAX,
   ZOOM_MAX,
   ZOOM_MIN,
+  wash,
 } from "./save";
+import { dirtOf, muddyWords } from "./dirt";
 import * as sfx from "./audio";
 import { BOTTOM_Y } from "./bao";
-import { fitCamera, flyBounds, swayCamera } from "./view";
+import { fitCamera, flyBounds, swayCamera, groundView } from "./view";
 import { placeScene } from "./placeScenes";
 import { hatsEarned, placeById, type PlaceId } from "./places";
-import { boxHat, hatById } from "./hats";
+import { boxHat, hatById, spookyHat } from "./hats";
 import { Crew } from "./friends";
 import { Visitors } from "./visitors";
 import { Nursery } from "./nursery";
 import { moodById, randomMood, type MoodId } from "./personality";
 import { combineSaves, decodeSave, encodeSave, findCode, HASH, keepStorage, moveLink } from "./move";
 import type { ModelTest } from "./modelTest";
-import { BABIES_MAX, growLeft, growWords, isNapping, moodOf, newBaby, pickBabyKind, play as playBaby, points, teach, SHY_BELOW } from "./babies";
+import { decodeGift, encodeGift, findGift, makeGift, openGift, receiveGift, sentGift, type Gift } from "./gift";
+import {
+  BABIES_MAX,
+  fulfil,
+  growLeft,
+  growth,
+  growWords,
+  isNapping,
+  moodOf,
+  newBaby,
+  pickBabyKind,
+  play as playBaby,
+  points,
+  stepWant,
+  teach,
+  SHY_BELOW,
+  type Baby,
+} from "./babies";
+import { wishFor, wishWords } from "./wishes";
+import { careGame, dayKey, doCare, doneToday, leftToday, type CareId } from "./care";
+import { clearTestUnlock, FREE_PLACES, fullWhy, hasFull, locksOn, placeOpen, squishyOpen, TEST_BUILD, writeUnlock } from "./unlock";
+import { shop, testShop, type BuyResult } from "./payments";
+import { watchApple } from "./apple";
+import { inApp } from "./native";
+import { GAME } from "./mirror";
+import { siteHome } from "./site";
+import { hideLoading } from "./loading";
 
 const app = document.getElementById("app")!;
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
@@ -64,7 +100,7 @@ app.appendChild(renderer.domElement);
 const save = loadSave();
 sfx.setSound(save.sound);
 const stage = buildStage(renderer);
-const island = buildIsland();
+const island = buildIsland(today());
 const fx = new Effects();
 stage.scene.add(fx.group);
 const thumbs = new Thumbs();
@@ -79,6 +115,11 @@ if (new URLSearchParams(location.search).has("modeltest")) {
 }
 
 let screen: Screen = "title";
+/** How far the shelf has slid down, 0 to 1, as the slide goes (eased), and where it's heading. */
+let trayK = save.trayDown ? 1 : 0;
+let trayGoal = trayK;
+/** The slide's own clock, 0 to 1, before easing. */
+let trayT = trayK;
 let keepAsked = false;
 const persist = () => {
   storeSave(save);
@@ -134,6 +175,8 @@ function finishTutorial(): void {
   pointAtOpen = true;
   ui.hint("You earned a box!", "Tap Open to see who's inside");
   sfx.chime(true);
+  ui.setCareReady(true);
+  refreshSpooky();
 }
 
 function tutorialDid(action: string): void {
@@ -158,6 +201,7 @@ function refreshMeters(): void {
   ui.setStars(save.stars);
   ui.setJobs(save.jobs[save.place] ?? 0);
   ui.setCookies(save.cookies);
+  refreshCare();
 }
 
 function giveLove(n: number): void {
@@ -165,15 +209,55 @@ function giveLove(n: number): void {
   ui.setLove(save.love);
   ui.beat();
   if (earned > 0) {
-    ui.setBoxes(save.boxes);
-    // During the tutorial the box is announced when it ends.
+    // During the tutorial the box is announced when it ends. On Halloween every box earned is a Spooky Box.
     if (save.tutorial === "done") {
-      ui.toast("New Squishy Box!");
+      const spooky = spookyFromLove(save, earned, today());
+      if (spooky) {
+        refreshSpooky();
+        ui.toast(spooky === 1 ? "New Spooky Box! 🎃" : `${spooky} new Spooky Boxes! 🎃`);
+        sfx.boo();
+        fx.emit("bat", squishy.topPoint(), 4);
+      } else ui.toast("New Squishy Box!");
       sfx.chime(true);
       fx.emit("sparkle", squishy.topPoint(), 10);
     }
+    ui.setBoxes(save.boxes);
   }
   persist();
+}
+
+// ---- Halloween --------------------------------------------------------
+
+/** After Halloween's own Spooky Box comes, point at it until it's opened. */
+let pointAtSpooky = false;
+
+function refreshSpooky(): void {
+  const ready = save.tutorial === "done";
+  ui.setSpooky(ready ? save.spookyBoxes : 0, ready ? sleepsToHalloween(today()) : 0);
+}
+
+/** On Halloween, once a year, a Spooky Box comes for everyone who has finished learning to play. */
+function checkHalloween(): void {
+  if (save.tutorial !== "done" || screen !== "closet" || !halloweenBox(save, today())) return;
+  persist();
+  refreshSpooky();
+  pointAtSpooky = true;
+  sfx.boo();
+  setTimeout(() => sfx.chime(true), 600);
+  fx.emit("bat", squishy.topPoint(), 6);
+  ui.hint("Happy Halloween!", "A Spooky Box came for you! Tap the pumpkin");
+}
+
+function openSpooky(): void {
+  sfx.unlockAudio();
+  if (screen !== "closet") return;
+  if (save.spookyBoxes > 0) {
+    if (squishy.isHome && !reveal && !ship && !bath.on) startBox(false, true);
+    return;
+  }
+  const n = sleepsToHalloween(today());
+  sfx.boo(1.2);
+  ui.toast(n ? `${n} more sleep${n === 1 ? "" : "s"} until Halloween! Spooky Boxes come then 🎃` : "Spooky Boxes come on Halloween! 🎃", 2400);
 }
 
 // ---- the squishy ------------------------------------------------------
@@ -198,12 +282,39 @@ squishy.home.copy(FLOOR_HOME);
 squishy.group.position.copy(squishy.home);
 squishy.setHat(hatOf(save.active));
 squishy.mood = moodById(moodIdOf(save.active));
+squishy.setDirt(dirtOfId(save.active));
 stage.scene.add(squishy.group);
 
 /** Shows `id` as the one you hold: its design, hat and personality. */
 function showHeld(def: SquishyDef, id: string): void {
   squishy.setDesign(def, hatOf(id));
   squishy.mood = moodById(moodIdOf(id));
+  squishy.setDirt(dirtOfId(id));
+}
+
+/** How muddy a squishy is today, from its last bath (dirt.ts). Only a look. */
+function dirtOfId(id: string | null): number {
+  return id ? dirtOf(save.owned[id]?.washed, today()) : 0;
+}
+
+/** Brings the mud up to date on the one you hold and the friends out (a new day may have passed). */
+function refreshDirt(): void {
+  if (screen !== "bath") squishy.setDirt(dirtOfId(save.active));
+  for (const f of crew.friends) f.sq.setDirt(dirtOfId(f.id));
+}
+
+/** Coming back to a muddy squishy: a gentle nudge toward the bath, once a day. */
+let muddyTold = "";
+function tellMuddy(): void {
+  if (save.tutorial !== "done" || !save.active) return;
+  const key = dayKey(today());
+  const level = dirtOfId(save.active);
+  if (muddyTold === key || !level) return;
+  muddyTold = key;
+  const who = save.active;
+  setTimeout(() => {
+    if (screen === "closet" && !ui.busy && save.active === who) ui.toast(muddyWords(nameOf(save, who), level), 3000);
+  }, 1500);
 }
 
 // ---- friends and places -------------------------------------------------
@@ -235,7 +346,7 @@ const crew = new Crew(stage.scene, squishy, stage.shadowMat, {
 
 function syncTeam(): void {
   crew.setTeam(
-    save.team.filter((id) => defById(id)).map((id) => ({ id, def: defById(id)!, hat: hatOf(id), mood: moodIdOf(id) })),
+    save.team.filter((id) => defById(id)).map((id) => ({ id, def: defById(id)!, hat: hatOf(id), mood: moodIdOf(id), dirt: dirtOfId(id) })),
   );
 }
 
@@ -255,12 +366,89 @@ const visitors = new Visitors(stage.scene, stage.shadowMat, {
 const nursery = new Nursery(stage.scene, stage.shadowMat, squishy, {
   fx: (kind, at, count) => fx.emit(kind, at, count),
 });
+// Friends hop around the one you hold, and around a baby asleep where they play.
+crew.blockers = () => {
+  const out = [{ x: squishy.home.x, z: squishy.home.z, r: 1.2 }];
+  const sl = nursery.sleeperAt;
+  if (sl) out.push({ x: sl.x, z: sl.z, r: 0.6 });
+  return out;
+};
+
+/** The icon in a baby's thought bubble, when it wants something. */
+const wantIcon = (b: Baby): string | null => (b.want ? (moodById(b.want).lesson?.icon ?? null) : null);
 
 function syncBabies(): void {
   const now = Date.now();
   nursery.setBabies(
-    save.babies.filter((b) => defById(b.kind)).map((b) => ({ key: b.key, def: defById(b.kind)!, mood: moodOf(b), napping: isNapping(b, now) })),
+    save.babies
+      .filter((b) => defById(b.kind))
+      .map((b) => ({ key: b.key, def: defById(b.kind)!, mood: moodOf(b), napping: isNapping(b, now), want: wantIcon(b), grow: growth(b, now) })),
   );
+}
+
+/** Babies start wanting things now and then; a bubble over their head shows what. */
+let wantClock = 2;
+function stepWants(dt: number): void {
+  wantClock -= dt;
+  if (wantClock > 0) return;
+  wantClock = 2;
+  // Not while you're doing a wish or looking at a card: the wish you're on stays put.
+  if (screen !== "closet" || ui.busy || tutorialStep()) return;
+  const now = Date.now();
+  let changed = false;
+  for (const b of save.babies) {
+    const res = stepWant(b, now, Math.random);
+    if (!res) continue;
+    changed = true;
+    nursery.setWant(b.key, wantIcon(b));
+    if (res === "new" && !ui.busy) ui.toast(`${wishWords(wishFor(b.want!).ask, babyName(b))} Tap it`, 2400);
+  }
+  if (changed) {
+    persist();
+    refreshShelf();
+  }
+}
+
+/** The happy sound for each step of a little game (and a chime when it's all done). */
+function wishBeat(want: MoodId, pitch: number, done: boolean, n: number): void {
+  if (done) return sfx.chime(true);
+  if (want === "musical") sfx.hum(pitch * (1 + n * 0.12));
+  else if (want === "bouncy" || want === "sporty") sfx.boing(pitch * (1.2 + n * 0.05));
+  else if (want === "sleepy" || want === "calm" || want === "cuddly") sfx.purr(0.4);
+  else if (want === "silly") sfx.giggle(pitch * 1.3);
+  else if (want === "brave") sfx.whoosh();
+  else {
+    sfx.pop();
+    sfx.squeak(pitch * (1.3 + n * 0.08), 0.08, 0.14);
+  }
+}
+
+/** Do what a baby wants: a little game together, then it grows a bit. */
+async function doWish(key: string): Promise<void> {
+  const b = save.babies.find((x) => x.key === key);
+  const def = b && defById(b.kind);
+  if (!b || !def || !b.want || isNapping(b, Date.now())) return;
+  const want = b.want;
+  const pitch = def.pitch;
+  sfx.pop();
+  const did = await ui.wish({
+    def,
+    name: babyName(b),
+    want,
+    beat: (done, n) => wishBeat(want, pitch, done, n),
+  });
+  // It may have grown up while you played.
+  if (!did || !save.babies.includes(b)) return;
+  const now = Date.now();
+  b.want = want;
+  fulfil(b, now, Math.random);
+  persist();
+  nursery.wished(key, want, growth(b, now));
+  giveLove(5);
+  const m = moodById(moodOf(b));
+  ui.toast(points(b) >= SHY_BELOW ? `${babyName(b)} grew a little! Becoming ${m.name} ${m.icon}` : `${babyName(b)} grew a little!`, 2200);
+  refreshShelf();
+  checkGrowUp();
 }
 
 /** Seconds of play until a sleeping baby turns up somewhere. */
@@ -271,7 +459,7 @@ function stepBabies(dt: number): void {
   babyClock -= dt;
   if (babyClock > 0) return;
   babyClock = 240 + Math.random() * 180;
-  const kind = pickBabyKind(new Set(Object.keys(save.owned)), save.babies.map((b) => b.kind), new Date(), Math.random);
+  const kind = pickBabyKind(new Set(Object.keys(save.owned)), save.babies.map((b) => b.kind), today(), Math.random, canFind);
   const def = defById(kind);
   if (!def) return;
   nursery.putSleeper(def, placeScene(placeId));
@@ -307,7 +495,16 @@ function babyInfo(key: string) {
   const def = b && defById(b.kind);
   if (!b || !def) return null;
   const now = Date.now();
-  return { key, def, name: babyName(b), left: growWords(growLeft(b, now)), becoming: points(b) >= SHY_BELOW ? moodById(moodOf(b)) : null, napping: isNapping(b, now) };
+  return {
+    key,
+    def,
+    name: babyName(b),
+    left: growWords(growLeft(b, now)),
+    becoming: points(b) >= SHY_BELOW ? moodById(moodOf(b)) : null,
+    napping: isNapping(b, now),
+    grow: growth(b, now),
+    want: b.want ?? null,
+  };
 }
 
 function openBaby(key: string): void {
@@ -334,6 +531,11 @@ function teachBaby(key: string, mood: MoodId): void {
 function tapBaby(key: string): void {
   const b = save.babies.find((x) => x.key === key);
   if (!b) return;
+  // Wanting something: tapping it is how you find out what, and do it.
+  if (b.want && !isNapping(b, Date.now())) {
+    void doWish(key);
+    return;
+  }
   const res = playBaby(b, Date.now());
   persist();
   nursery.played(key, res === "woke");
@@ -376,7 +578,7 @@ function refreshShelf(): void {
   // Babies sit right after the ones out playing.
   const now = Date.now();
   const at = items.findIndex((it) => it.state === "rest");
-  items.splice(at < 0 ? items.length : at, 0, ...save.babies.map((b) => ({ id: b.kind, state: "baby" as ShelfState, hat: null, key: b.key, napping: isNapping(b, now) })));
+  items.splice(at < 0 ? items.length : at, 0, ...save.babies.map((b) => ({ id: b.kind, state: "baby" as ShelfState, hat: null, key: b.key, napping: isNapping(b, now), want: wantIcon(b) })));
   ui.setShelf(items);
 }
 
@@ -419,6 +621,8 @@ function wearHat(id: string | null): void {
 
 let placeId: PlaceId = save.place;
 function goPlace(id: PlaceId, quiet = false): void {
+  // A place outside this phone's game (the free game has two) goes to the first free one, Living Room.
+  if (!placeOpen(id, hasFull(save.owned))) id = FREE_PLACES[0];
   placeId = id;
   save.place = id;
   persist();
@@ -435,6 +639,50 @@ function goPlace(id: PlaceId, quiet = false): void {
     fx.emit("sparkle", squishy.topPoint(), 12);
     ui.toast(placeById(id).name, 1400);
   }
+}
+
+// ---- the full game ----------------------------------------------------
+
+/** Squishies a box or a nap can bring on this phone: the free game has no sparkly ones. */
+const canFind = (d: SquishyDef): boolean => squishyOpen(d, hasFull(save.owned));
+
+// In the app, once selling has started: a purchase Apple finishes at any time (an approved Ask to Buy, a restore on
+// another screen) opens the game.
+if (inApp() && locksOn()) {
+  watchApple(() => {
+    if (fullWhy(save.owned) === null) {
+      writeUnlock("apple", Date.now());
+      ui.toast("The whole world is open! 🎉", 2200);
+    }
+  });
+}
+
+function fullHandlers(): Pick<UiHandlers, "full" | "shopInfo" | "buyFull" | "restoreFull" | "relock"> {
+  const unlocked = (r: BuyResult): BuyResult => {
+    if (r.ok) {
+      writeUnlock(r.how, Date.now());
+      sfx.chime(true);
+      fx.emit("sparkle", squishy.topPoint(), 24);
+    }
+    return r;
+  };
+  return {
+    full: () => {
+      const why = fullWhy(save.owned);
+      return { has: why !== null, why, locks: locksOn(), test: TEST_BUILD };
+    },
+    shopInfo: async () => {
+      const s = shop();
+      const ready = await s.ready();
+      return { ready, price: ready ? await s.price() : null };
+    },
+    buyFull: async (test) => unlocked(await (test && testShop ? testShop : shop()).buy()),
+    restoreFull: async () => unlocked(await shop().restore()),
+    relock: () => {
+      clearTestUnlock();
+      goPlace(placeId, true);
+    },
+  };
 }
 
 /** Makes `id` the one you hold; the one you held joins the friends if there is room. */
@@ -495,8 +743,13 @@ interface Reveal {
   def: SquishyDef;
   first: boolean;
   taps: number;
-  /** Closing the lid, waiting for taps, popping open. */
-  phase: "closing" | "waiting" | "popping" | "done";
+  /** Squishy mail drifting down (gifts only), closing the lid (or a Spooky Box arriving), waiting for taps, popping open. */
+  phase: "falling" | "closing" | "arriving" | "waiting" | "popping" | "done";
+  /** Squishy mail from a friend, opened with one tap. */
+  gift?: Gift;
+  /** A Spooky Box: a jack-o'-lantern instead of the steamer. */
+  spooky?: boolean;
+  landed?: boolean;
   t: number;
   shake: number;
 }
@@ -505,21 +758,32 @@ let popScale = 1;
 /** Seconds into tucking the opening basket away, or -1 when not. */
 let basketAway = -1;
 
-function startBox(first: boolean): void {
+function startBox(first: boolean, spooky = false): void {
   const owned = new Set(Object.keys(save.owned));
-  const { def } = openBox(owned, new Date(), Math.random, first);
-  reveal = { def, first, taps: 0, phase: "closing", t: 0, shake: 0 };
+  const { def } = spooky ? openSpookyBox(owned, Math.random, canFind) : openBox(owned, today(), Math.random, first, canFind);
+  reveal = { def, first, taps: 0, phase: spooky ? "arriving" : "closing", t: 0, shake: 0, spooky };
   fingersUp();
   setScreen("box");
-  // The opening basket comes out in front; the new one pops up inside it.
+  // The opening basket comes out in front (or the Spooky Box drops in); the new one pops up inside it.
   basketAway = -1;
-  stage.basket.scale.setScalar(1);
-  stage.showBasket(true);
+  if (spooky) {
+    pointAtSpooky = false;
+    stage.pumpkin.scale.setScalar(1);
+    stage.pumpkin.rotation.set(0, 0, 0);
+    stage.pumpkinLid.position.copy(PUMPKIN_LID_CLOSED.pos);
+    stage.pumpkinLid.rotation.copy(PUMPKIN_LID_CLOSED.rot);
+    liftBox(6, stage.pumpkin);
+    stage.showPumpkin(true);
+    sfx.boo();
+  } else {
+    stage.basket.scale.setScalar(1);
+    stage.showBasket(true);
+    sfx.whoosh();
+  }
   squishy.placeAt(new THREE.Vector3(0, BASKET_FLOOR - BOTTOM_Y, 0));
   Object.assign(squishy.basket, BASKET_WALL);
   squishy.group.visible = false;
-  ui.hint(first ? "Your first squishy!" : "A new squishy!", "Tap the box 3 times");
-  sfx.whoosh();
+  ui.hint(spooky ? "A Spooky Box!" : first ? "Your first squishy!" : "A new squishy!", spooky ? "Tap the pumpkin 3 times" : "Tap the box 3 times");
 }
 
 function tapBox(): void {
@@ -529,7 +793,11 @@ function tapBox(): void {
   sfx.squeak(1 + reveal.taps * 0.15, 0.12, 0.3);
   sfx.vibrate(12 * reveal.taps);
   fx.emit("sparkle", new THREE.Vector3(0, 0.7, 0.6), 2 + reveal.taps * 2);
-  if (reveal.taps >= 3) {
+  if (reveal.spooky) {
+    fx.emit("smoke", new THREE.Vector3(0, 1.0, 0.5), 2);
+    fx.emit("bat", new THREE.Vector3(0, 1.1, 0.6), 1);
+  }
+  if (reveal.taps >= (reveal.gift ? 1 : 3)) {
     reveal.phase = "popping";
     reveal.t = 0;
     ui.hint(null);
@@ -540,13 +808,19 @@ function tapBox(): void {
 
 function popOut(): void {
   if (!reveal) return;
-  const { def, first } = reveal;
-  if (!first) save.boxes = Math.max(0, save.boxes - 1);
+  if (reveal.gift) {
+    popGift();
+    return;
+  }
+  const { def, first, spooky } = reveal;
+  if (spooky) save.spookyBoxes = Math.max(0, save.spookyBoxes - 1);
+  else if (!first) save.boxes = Math.max(0, save.boxes - 1);
   const got = collect(save, def.id, Date.now(), randomMood(Math.random));
   const prevActive = save.active;
   // A new one is held right away; the one you held joins the friends.
   if (got.isNew) holdSquishy(save, def.id);
-  const hat = first ? null : boxHat(save.hats, isOctober(new Date()), Math.random);
+  // A Spooky Box always brings a spooky hat you don't have yet.
+  const hat = first ? null : spooky ? spookyHat(save.hats, Math.random) : boxHat(save.hats, isOctober(today()), Math.random);
   if (hat) addHat(save, hat);
   persist();
   showHeld(def, def.id);
@@ -563,6 +837,14 @@ function popOut(): void {
     fx.emit("sparkle", at, 5);
   }
   fx.emit("heart", at, 6);
+  if (spooky) {
+    // Out of the pumpkin in a puff of purple, with bats and candy.
+    fx.emit("smoke", at, 8);
+    fx.emit("bat", at, 7);
+    fx.emit("candy", at, 9);
+    sfx.boo(1.1);
+    refreshSpooky();
+  }
   sfx.pop();
   sfx.chime(true);
   setTimeout(async () => {
@@ -585,6 +867,373 @@ function popOut(): void {
   }, 1100);
 }
 
+// ---- squishy mail -------------------------------------------------------
+// Sending: the squishy bounces into its steamer box, the lid closes, and once the link is sent the box floats up
+// and away in a trail of sparkles. Your squishy stays with you; your friend gets a twin. Getting one: the box drifts
+// down onto the glowing inbox pad, one tap opens it, and the squishy pops out.
+
+/** The glowing spot squishy mail lands on. */
+const mailPad = (() => {
+  const tex = canvasTex(256, 256, (c) => {
+    const g = c.createRadialGradient(128, 128, 20, 128, 128, 128);
+    g.addColorStop(0, "rgba(255,255,255,0.0)");
+    g.addColorStop(0.55, "rgba(186,232,255,0.55)");
+    g.addColorStop(0.78, "rgba(255,190,225,0.85)");
+    g.addColorStop(1, "rgba(255,190,225,0)");
+    c.fillStyle = g;
+    c.fillRect(0, 0, 256, 256);
+    c.fillStyle = "rgba(255,255,255,0.95)";
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2;
+      const x = 128 + Math.cos(a) * 92;
+      const y = 128 + Math.sin(a) * 92;
+      c.beginPath();
+      for (let k = 0; k < 8; k++) {
+        const rr = k % 2 ? 3 : 8;
+        const b = (k / 8) * Math.PI * 2;
+        c.lineTo(x + Math.cos(b) * rr, y + Math.sin(b) * rr);
+      }
+      c.fill();
+    }
+  });
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 3.6), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, opacity: 0 }));
+  m.rotation.x = -Math.PI / 2;
+  m.position.y = 0.008;
+  m.visible = false;
+  stage.scene.add(m);
+  return m;
+})();
+const padMat = mailPad.material as THREE.MeshBasicMaterial;
+/** Seconds into fading the pad out, or -1. */
+let padAway = -1;
+const FALL_FROM = 8.5;
+const FALL_SECONDS = 2.6;
+let trailAt = 0;
+const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
+
+/** Lifts or drops the opening basket (or the Spooky Box), with its shadow shrinking as it goes up. */
+function liftBox(y: number, box: THREE.Object3D): void {
+  box.position.y = y;
+  const k = 1 / (1 + Math.max(0, y) * 0.45);
+  stage.basketShadow.scale.setScalar(k);
+  (stage.basketShadow.material as THREE.MeshBasicMaterial).opacity = k;
+}
+const liftBasket = (y: number) => liftBox(y, stage.basket);
+
+function resetBasket(): void {
+  stage.basket.position.set(0, 0, 0);
+  stage.basket.rotation.set(0, 0, 0);
+  stage.basket.scale.setScalar(1);
+  liftBasket(0);
+}
+
+/** A sparkle trail behind a flying box. */
+function trail(now: number, every = 0.08): void {
+  if (now < trailAt) return;
+  trailAt = now + every;
+  const at = stage.basket.position.clone();
+  at.y += 0.1;
+  fx.emit("glimmer", at, 1);
+  if (Math.random() < 0.3) fx.emit("sparkle", at, 1);
+}
+
+/** Puts the one you hold back in front, popping in. */
+function bringBackHeld(): void {
+  const id = save.active;
+  const def = id && defById(id);
+  if (def && id) showHeld(def, id);
+  squishy.basket.r = 0;
+  squishy.placeAt(FLOOR_HOME);
+  squishy.group.visible = true;
+  squishy.group.scale.setScalar(1);
+  popScale = 0.15;
+  squishy.popIn();
+}
+
+// Getting squishy mail
+
+/** A gift code from a link or paste: into the inbox. Returns what to tell the kid. */
+function takeGift(code: string | null, text: string): string {
+  const g = code ? decodeGift(code) : null;
+  if (!g) return findCode(text) ? "That's a move link. Open it from Settings, Move to a new phone." : "That squishy link didn't work. Ask for a new one.";
+  const got = receiveGift(save, g);
+  persist();
+  ui.setMail(save.inbox.length);
+  if (got === "own") return "That's your own squishy mail! Send the link to a friend.";
+  if (got === "again") return "You already got this squishy mail!";
+  if (got === "full") return "Your inbox is full! Open your squishy mail first.";
+  mailClock = 0;
+  return screen === "title" ? "Squishy mail is coming! Tap Play" : "Squishy mail is coming!";
+}
+
+let mailClock = 0;
+/** Mail waits for a calm moment in the closet, after the tutorial. */
+function stepMail(dt: number): void {
+  if (!save.inbox.length || ui.busy || tutorialStep() || reveal || ship || !squishy.isHome || fingers.size) {
+    mailClock = 0;
+    return;
+  }
+  mailClock += dt;
+  if (mailClock > 1.4) startMail();
+}
+
+function startMail(): void {
+  const gift = save.inbox[0];
+  const def = gift && defById(gift.id);
+  if (!gift || !def || reveal || ship) return;
+  mailClock = 0;
+  reveal = { def, first: false, taps: 0, phase: "falling", t: 0, shake: 0, gift };
+  fingersUp();
+  setScreen("box");
+  basketAway = -1;
+  resetBasket();
+  stage.showBasket(true);
+  liftBasket(FALL_FROM);
+  placeLid(1, 0);
+  squishy.placeAt(new THREE.Vector3(0, BASKET_FLOOR - BOTTOM_Y, 0));
+  Object.assign(squishy.basket, BASKET_WALL);
+  squishy.group.visible = false;
+  padAway = -1;
+  mailPad.visible = true;
+  padMat.opacity = 0;
+  ui.hint("Squishy mail!", "A friend sent you a squishy");
+  sfx.whoosh();
+  setTimeout(() => sfx.chime(false), 500);
+}
+
+/** The box floats down, swaying like a leaf, and settles on the pad. */
+function stepFalling(r: Reveal, dt: number, now: number): void {
+  const k = Math.min(1, r.t / FALL_SECONDS);
+  const e = easeOut(k);
+  liftBasket(FALL_FROM * (1 - e));
+  const calm = 1 - e;
+  stage.basket.rotation.set(Math.cos(now * 1.7) * 0.1 * calm, Math.sin(now * 0.9) * 0.6 * calm, Math.sin(now * 2.2) * 0.18 * calm);
+  stage.basket.position.x = Math.sin(now * 1.3) * 0.5 * calm;
+  placeLid(1, 0);
+  padMat.opacity = 0.35 + 0.55 * e + Math.sin(now * 5) * 0.08;
+  mailPad.scale.setScalar(0.85 + 0.15 * e);
+  trail(now, 0.09 + 0.1 * e);
+  if (k >= 1) {
+    resetBasket();
+    r.phase = "waiting";
+    r.shake = 1.2;
+    sfx.thud(0.5);
+    sfx.vibrate(15);
+    fx.emit("sparkle", new THREE.Vector3(0, 0.5, 0.6), 8);
+    fx.emit("glimmer", new THREE.Vector3(0, 0.4, 0.4), 10);
+    ui.hint("Squishy mail!", "Tap the box to open it");
+  }
+  void dt;
+}
+
+/** The mail box pops open: the squishy jumps out and says hi. */
+function popGift(): void {
+  if (!reveal) return;
+  const opened = openGift(save, Date.now());
+  if (!opened) {
+    reveal = null;
+    setScreen("closet");
+    return;
+  }
+  const { def } = reveal;
+  const id = def.id;
+  const prevActive = save.active;
+  if (opened.isNew) holdSquishy(save, id);
+  persist();
+  ui.setMail(save.inbox.length);
+  if (opened.newHat) ui.newHat(true);
+  padAway = 0;
+  // Show it as it came, hat and all, even if it's one you had.
+  squishy.setDesign(def, opened.isNew ? hatOf(id) : (opened.gift.hat ?? null));
+  squishy.mood = moodById(opened.isNew ? moodIdOf(id) : opened.gift.mood);
+  squishy.group.visible = true;
+  popScale = 0.15;
+  squishy.popIn();
+  const at = squishy.topPoint();
+  fx.emit("glimmer", at, 18);
+  fx.emit("sparkle", at, 12);
+  fx.emit("heart", at, 8);
+  fx.emit("star", at, 3);
+  sfx.pop();
+  sfx.chime(true);
+  setTimeout(async () => {
+    await ui.card({
+      def,
+      name: nameOf(save, id),
+      isNew: opened.isNew,
+      stars: opened.isNew ? undefined : opened.stars,
+      mood: opened.isNew ? moodIdOf(id) : opened.gift.mood,
+      arrived: true,
+      cameWith: opened.newHat ? hatById(opened.newHat)?.name : undefined,
+    });
+    if (!opened.isNew && prevActive) {
+      const back = defById(prevActive);
+      if (back) showHeld(back, prevActive);
+    }
+    reveal = null;
+    syncTeam();
+    setScreen("closet");
+    squishy.basket.r = 0;
+    squishy.placeAt(FLOOR_HOME);
+    basketAway = 0;
+    squishy.hello();
+  }, 1100);
+}
+
+// Sending squishy mail
+
+interface Ship {
+  id: string;
+  name: string;
+  link: string;
+  /** Jumping into the box, the lid closing, packed while the link is shared, flying away, or unpacking. */
+  phase: "jump" | "closing" | "packed" | "lift" | "unpack";
+  t: number;
+  /** Things done once per phase. */
+  did: number;
+}
+let ship: Ship | null = null;
+const BOX_SPOT = new THREE.Vector3(0, BASKET_FLOOR - BOTTOM_Y, 0);
+
+function shareSquishy(id: string): void {
+  const def = defById(id);
+  if (!def || !save.owned[id] || screen !== "closet" || reveal || ship) return;
+  if (tutorialStep()) {
+    ui.toast("Finish learning to play first!", 1800);
+    return;
+  }
+  const gift = makeGift(save, id);
+  if (!gift) return;
+  sentGift(save, gift);
+  persist();
+  const link = moveLink(encodeGift(gift), location, document.referrer, window.parent !== window);
+  ship = { id, name: nameOf(save, id), link, phase: "jump", t: 0, did: 0 };
+  fingersUp();
+  setScreen("box");
+  basketAway = -1;
+  // The one being sent comes out in front, wearing its hat.
+  if (id !== save.active || !squishy.isHome) {
+    squishy.setDesign(def, hatOf(id));
+    squishy.mood = moodById(moodIdOf(id));
+  }
+  squishy.basket.r = 0;
+  squishy.placeAt(FLOOR_HOME);
+  squishy.group.visible = true;
+  squishy.group.scale.setScalar(1);
+  popScale = 1;
+  resetBasket();
+  stage.basket.scale.setScalar(0.001);
+  stage.showBasket(true);
+  placeLid(0, 0);
+  ui.hint(`Off you go, ${ship.name}!`, "Into the box!");
+  squishy.wiggle();
+}
+
+function stepShip(dt: number, now: number): void {
+  const s = ship;
+  if (!s) return;
+  s.t += dt;
+  if (s.phase === "jump") {
+    // The box pops up, the squishy bounces high and lands inside it.
+    const grow = Math.min(1, Math.max(0, (s.t - 0.35) / 0.35));
+    stage.basket.scale.setScalar(Math.max(0.001, grow + Math.sin(grow * Math.PI) * 0.15));
+    if (s.did === 0 && s.t > 0.45) {
+      s.did = 1;
+      squishy.bounce(6);
+      sfx.boing(squishy.pitch);
+      sfx.whoosh();
+    }
+    if (s.did === 1 && s.t > 0.6) {
+      s.did = 2;
+      squishy.placeAt(BOX_SPOT);
+      Object.assign(squishy.basket, BASKET_WALL);
+    }
+    if (s.t > 1.55) {
+      s.phase = "closing";
+      s.t = 0;
+      s.did = 0;
+      sfx.thud(0.4);
+      fx.emit("sparkle", squishy.topPoint(), 6);
+    }
+  } else if (s.phase === "closing") {
+    // It snuggles down as the lid comes over.
+    const k = Math.min(1, s.t / 0.7);
+    placeLid(ease(k), 0.9);
+    const duck = Math.min(1, Math.max(0, (k - 0.15) / 0.6));
+    squishy.group.scale.set(1 - duck * 0.35, 1 - duck * 0.7, 1 - duck * 0.35);
+    if (duck >= 1) squishy.group.visible = false;
+    if (k >= 1) {
+      s.phase = "packed";
+      s.t = 0;
+      sfx.thud(0.6);
+      fx.emit("glimmer", new THREE.Vector3(0, 0.6, 0.4), 12);
+      fx.emit("heart", new THREE.Vector3(0, 0.8, 0.4), 3);
+      ui.hint(null);
+      void ui.shareSheet(s.name, s.link).then((sent) => {
+        if (ship !== s) return;
+        s.phase = sent ? "lift" : "unpack";
+        s.t = 0;
+        s.did = 0;
+      });
+    }
+  } else if (s.phase === "packed") {
+    // Waiting for the link to go: a happy little wobble.
+    placeLid(1, 0);
+    stage.basket.rotation.z = Math.sin(now * 3) * 0.04;
+  } else if (s.phase === "lift") {
+    if (s.did === 0) {
+      s.did = 1;
+      sfx.whoosh();
+      sfx.chime(true);
+      fx.emit("sparkle", new THREE.Vector3(0, 0.3, 0.5), 10);
+    }
+    // A little crouch, then up and away, swaying and turning, smaller and smaller.
+    const crouch = Math.min(1, s.t / 0.3);
+    const k = Math.max(0, (s.t - 0.3) / 2.4);
+    if (k === 0) stage.basket.scale.set(1 + 0.08 * Math.sin(crouch * Math.PI), 1 - 0.12 * Math.sin(crouch * Math.PI), 1 + 0.08 * Math.sin(crouch * Math.PI));
+    else {
+      const e = Math.pow(Math.min(1, k), 1.5);
+      liftBasket(e * 9);
+      stage.basket.position.x = Math.sin(k * Math.PI * 1.6) * 0.6;
+      stage.basket.rotation.set(Math.sin(now * 2) * 0.08, k * 2.4, Math.sin(now * 2.6) * 0.16);
+      stage.basket.scale.setScalar(1 - 0.45 * Math.min(1, k));
+      trail(now, 0.08);
+    }
+    placeLid(1, 0);
+    if (k >= 1) {
+      ship = null;
+      stage.showBasket(false);
+      resetBasket();
+      placeLid(0, 0);
+      bringBackHeld();
+      setScreen("closet");
+      ui.toast(`On its way! ${s.name} stays with you too.`, 2400);
+    }
+  } else if (s.phase === "unpack") {
+    // Not now: the lid pops off and it hops back out.
+    const k = Math.min(1, s.t / 0.75);
+    placeLid(1 - ease(k), 2.2, Math.sin(k * Math.PI) * 1.2);
+    if (s.did === 0) {
+      s.did = 1;
+      squishy.group.visible = true;
+      squishy.group.scale.setScalar(1);
+      squishy.popIn();
+      fx.emit("sparkle", squishy.topPoint(), 6);
+    }
+    if (k >= 1) {
+      ship = null;
+      const held = save.active;
+      squishy.basket.r = 0;
+      squishy.placeAt(FLOOR_HOME);
+      basketAway = 0;
+      setScreen("closet");
+      // If it wasn't the one you hold, that one comes back.
+      if (held && held !== s.id) setTimeout(() => !ship && !reveal && bringBackHeld(), 450);
+      else squishy.hello();
+    }
+  }
+}
+
 // ---- screens ----------------------------------------------------------
 
 function setScreen(s: Screen): void {
@@ -600,15 +1249,40 @@ function setScreen(s: Screen): void {
   if (s === "closet") {
     checkGrowUp();
     refreshMeters();
+    refreshDirt();
     refreshShelf();
+    refreshSpooky();
+    ui.setCareReady(save.tutorial === "done");
+    if (!introCare()) tellMuddy();
     if (tutorialStep()) showTutorial();
     else if (pointAtOpen && save.boxes > 0) ui.hint("You earned a box!", "Tap Open to see who's inside");
+    else if (pointAtSpooky && save.spookyBoxes > 0) ui.hint("Happy Halloween!", "Tap the pumpkin to open your Spooky Box");
     else ui.hint(null);
+    checkHalloween();
   } else {
     ui.hint(null);
     ui.showSkip(false);
   }
   fit();
+}
+
+/**
+ * Leave game, on the title screen: back to TrueAIGaming's home page. Played inside the site's play page, the whole
+ * page goes (not just the game's frame). Not in the app, where there is no site to go back to.
+ */
+function leaveGame(): void {
+  sfx.pop();
+  persist();
+  const url = siteHome(location.ancestorOrigins?.[0], document.referrer);
+  // A moment for the pop, and for the site's copy of the save to hear the last change.
+  window.setTimeout(() => {
+    try {
+      (window.top ?? window).location.href = url;
+    } catch {
+      // A frame that may not move the page asks the page to go instead.
+      window.parent.postMessage({ type: "tag:leave", game: GAME, v: 1, url }, "*");
+    }
+  }, 250);
 }
 
 const ui = new Ui(
@@ -619,6 +1293,7 @@ const ui = new Ui(
       if (Object.keys(save.owned).length === 0) startBox(true);
       else setScreen("closet");
     },
+    leave: inApp() ? null : leaveGame,
     toggleSound: () => {
       save.sound = !save.sound;
       sfx.unlockAudio();
@@ -647,6 +1322,7 @@ const ui = new Ui(
     hats: () => ({ wearing: hatOf(save.active), have: save.hats, who: save.active ? nameOf(save, save.active) : "" }),
     wearHat,
     goPlace: (id) => goPlace(id),
+    ...fullHandlers(),
     place: () => placeId,
     zoom: () => save.zoom,
     setZoom: (z) => {
@@ -663,6 +1339,7 @@ const ui = new Ui(
     },
     babyTap: (key) => openBaby(key),
     teach: teachBaby,
+    doWish: (key) => void doWish(key),
     renameBaby: (key, name) => {
       const b = save.babies.find((x) => x.key === key);
       if (!b) return;
@@ -684,6 +1361,23 @@ const ui = new Ui(
       if (save.tutorial !== "done") finishTutorial();
     },
     moveLink: async () => moveLink(await encodeSave(save), location, document.referrer, window.parent !== window),
+    share: (id) => shareSquishy(id),
+    mail: () => save.inbox.length,
+    openMail: () => {
+      if (screen === "closet" && save.inbox.length) startMail();
+    },
+    receive: (text) => takeGift(findGift(text), text),
+    careInfo: () =>
+      save.active ? { who: nameOf(save, save.active), done: doneToday(save.care, today()), days: save.care.days } : null,
+    care: (id) => void careFor(id),
+    closeBath: () => endBath(false),
+    openSpooky,
+    tray: (down) => {
+      save.trayDown = down;
+      persist();
+      trayGoal = down ? 1 : 0;
+      ui.hand(null);
+    },
     bringIn: async (text) => {
       const code = findCode(text);
       const other = code && (await decodeSave(code));
@@ -695,21 +1389,181 @@ const ui = new Ui(
   thumbs,
   save.sound,
 );
+ui.halloween(isSpookySeason(today()));
+ui.setTray(save.trayDown, false);
+
+// ---- bath time ----------------------------------------------------------
+
+const BATH_WORDS: Record<BathStep, [string, string]> = {
+  fill: ["Fill the tub!", "Tap the tap to turn on the water"],
+  scrub: ["Scrub-a-dub!", "Rub {n} to wash off the mud"],
+  rinse: ["Rinse the bubbles", "Hold and drag the shower over {n}"],
+  dry: ["Dry off!", "Rub {n} with the fluffy towel"],
+};
+
+const bath = new Bath(
+  stage.scene,
+  squishy,
+  camera,
+  {
+    fx: (kind, at, count) => fx.emit(kind, at, count),
+    step: (st, i) => {
+      const who = save.active ? nameOf(save, save.active) : "your squishy";
+      const [title, how] = BATH_WORDS[st];
+      ui.bathStep(i, title, how.replace("{n}", who));
+    },
+    progress: (k) => ui.bathProgress(k),
+    hint: (move, at) => {
+      if (!move || !at || ui.busy) ui.hand(null);
+      else {
+        const p = toScreen(at);
+        ui.hand(move, p.x, p.y);
+      }
+    },
+    clean: () => {
+      ui.bathStep(BATH_STEPS.length, "Squeaky clean!", "✨ All done! ✨");
+      ui.bathProgress(1);
+    },
+    done: () => endBath(true),
+  },
+  isSpookySeason(today()),
+);
+/** After a bath the one you hold sparkles for a while. */
+let freshUntil = 0;
+
+function startBath(): void {
+  sfx.unlockAudio();
+  if (screen !== "closet" || reveal || ship || bath.on || !squishy.isHome || !save.active) return;
+  if (tutorialStep()) {
+    ui.toast("Finish learning to play first!", 1800);
+    return;
+  }
+  fingersUp();
+  squishy.wakeUp();
+  // The bath brings its own mud to scrub off.
+  squishy.setDirt(0);
+  setScreen("bath");
+  ui.bathStep(-1, "Bath time!", `In you hop, ${nameOf(save, save.active)}!`);
+  bath.start();
+}
+
+/** Out of the bath and back on the floor; a whole bath earns love (and the first one, a shower cap). */
+function endBath(clean: boolean): void {
+  if (screen !== "bath") return;
+  bath.stop();
+  squishy.basket.r = 0;
+  squishy.placeAt(FLOOR_HOME);
+  squishy.hello();
+  if (clean && save.active) wash(save, save.active, today());
+  setScreen("closet");
+  if (!clean) return;
+  save.baths++;
+  giveLove(20);
+  freshUntil = performance.now() / 1000 + 40;
+  ui.toast(`${save.active ? nameOf(save, save.active) : "Your squishy"} is squeaky clean! ✨`, 2200);
+  if (addHat(save, "showerCap")) {
+    persist();
+    showNewHat("showerCap");
+  }
+  cared("bath");
+}
+
+// ---- daily care -----------------------------------------------------------
+
+/** What each care says when it's done. */
+const CARE_YAY: Record<Exclude<CareId, "bath">, string> = {
+  feed: "is all full! Yum!",
+  nap: "had a cozy nap!",
+  play: "had so much fun!",
+};
+
+function refreshCare(): void {
+  ui.setCare(leftToday(save.care, today()));
+}
+
+/** Once, after learning to play: point out the Care button (and that the bath lives there now). */
+function introCare(): boolean {
+  if (save.tutorial !== "done" || pointAtOpen || pointAtSpooky || !save.active || save.seen.includes("care")) return false;
+  save.seen.push("care");
+  persist();
+  setTimeout(() => {
+    if (screen === "closet" && !ui.busy) ui.toast("New! Tap Care for a snack, a bath, a nap and play 💗", 3200);
+  }, 1200);
+  return true;
+}
+
+/** A snack, a nap or play with the one you hold: a little game together. The bath has its own screen. */
+async function careFor(id: CareId): Promise<void> {
+  sfx.unlockAudio();
+  if (id === "bath") return startBath();
+  if (screen !== "closet" || reveal || ship || bath.on || !save.active) return;
+  if (tutorialStep()) {
+    ui.toast("Finish learning to play first!", 1800);
+    return;
+  }
+  const who = save.active;
+  const def = defById(who);
+  const mood = moodIdOf(who);
+  const wish = careGame(id, mood);
+  if (!def || !wish) return;
+  // The sounds follow the game: munching, a lullaby, or the squishy's own kind of play.
+  const sound: MoodId = id === "feed" ? "sweet" : id === "nap" ? "sleepy" : wish === wishFor(mood) ? mood : "sporty";
+  const pitch = def.pitch;
+  sfx.pop();
+  const did = await ui.wish({ def, name: nameOf(save, who), want: mood, wish, beat: (done, n) => wishBeat(sound, pitch, done, n) });
+  if (!did || screen !== "closet") return;
+  squishy.hello();
+  fx.emit("heart", squishy.topPoint(), 8);
+  ui.toast(`${nameOf(save, who)} ${CARE_YAY[id]}`, 2000);
+  cared(id);
+}
+
+/** One of the day's care things is done: love, and the present when it's the last of the four. */
+function cared(id: CareId): void {
+  const cookies = save.cookies;
+  const stars = save.stars;
+  const res = doCare(save, id, today());
+  persist();
+  refreshCare();
+  if (res.love) giveLove(res.love);
+  if (!res.present) return;
+  const show = async () => {
+    // Wait for any card or game still open (like a new hat) to close first.
+    while (ui.busy) await new Promise((r) => setTimeout(r, 400));
+    sfx.chime(true);
+    fx.emit("sparkle", squishy.topPoint(), 12);
+    await ui.presentCard(save.active ? nameOf(save, save.active) : "your squishy", save.cookies - cookies, save.stars - stars);
+    ui.setCookies(save.cookies, true);
+    ui.setStars(save.stars);
+  };
+  setTimeout(() => void show(), 900);
+}
 
 // ---- fitting the view -------------------------------------------------
 
 const bounds: Bounds = { minX: -3, maxX: 3, maxY: 6, floorY: 0 };
+const BATH_ZOOM = 1.3;
 let worldPerPx = 0.01;
+
+/** Points the camera for the screen size, the zoom and how far the shelf has slid down. */
+function frameCamera(): void {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  // Bath time comes in closer, so there's more squishy to scrub; it keeps its own framing whatever the shelf does.
+  fitCamera(camera, w, h, save.zoom * (screen === "bath" ? BATH_ZOOM : 1), screen === "bath" ? 0 : trayK);
+  const base = camera.userData.base as { pos: THREE.Vector3; target: THREE.Vector3 };
+  stage.setViewDistance(base.pos.distanceTo(base.target));
+  worldPerPx = flyBounds(camera, h, bounds);
+}
 
 function fit(): void {
   const w = window.innerWidth;
   const h = window.innerHeight;
   renderer.setSize(w, h, false);
-  fitCamera(camera, w, h, save.zoom);
-  const base = camera.userData.base as { pos: THREE.Vector3; target: THREE.Vector3 };
-  stage.setViewDistance(base.pos.distanceTo(base.target));
-  worldPerPx = flyBounds(camera, h, bounds);
+  frameCamera();
   island.fit(w, h);
+  // On its side there's room to roam; turned back upright, anyone off the edge hops back into view.
+  if (screen !== "bath") crew.reframe(groundView(camera));
 }
 window.addEventListener("resize", fit);
 
@@ -829,6 +1683,12 @@ canvas.addEventListener("pointerdown", (e) => {
     tapBox();
     return;
   }
+  if (screen === "bath") {
+    if (ui.busy) return;
+    canvas.setPointerCapture(e.pointerId);
+    bath.down(e.pointerId, e.clientX, e.clientY);
+    return;
+  }
   if (!playing()) return;
   // A tap on the hat pops it; a tap on a friend is for that friend.
   ndc.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
@@ -857,6 +1717,19 @@ canvas.addEventListener("pointerdown", (e) => {
       visitors.tap(v);
       return;
     }
+    // Halloween decorations play back: ghosts say boo, jack-o'-lanterns hop.
+    const pk = placeScene(placeId).poke?.(ray);
+    if (pk) {
+      if (pk.boo) sfx.boo(0.9 + Math.random() * 0.4);
+      else {
+        sfx.boing(1.1);
+        fx.emit("candy", pk.at, 3);
+      }
+      fx.emit(pk.boo ? "smoke" : "sparkle", pk.at, 4);
+      giveLove(1);
+      ui.toast(pk.say, 1300);
+      return;
+    }
   }
   canvas.setPointerCapture(e.pointerId);
   const onBody = squishy.isHome && nearSquishy(e.clientX, e.clientY) !== null;
@@ -871,6 +1744,10 @@ canvas.addEventListener("pointerdown", (e) => {
   gestures.down(e.pointerId, e.clientX, e.clientY, nowMs(), onBody);
 });
 canvas.addEventListener("pointermove", (e) => {
+  if (screen === "bath") {
+    bath.move(e.pointerId, e.clientX, e.clientY);
+    return;
+  }
   const f = fingers.get(e.pointerId);
   if (f) {
     if (!squishy.isHome) fingerEnd(e.pointerId);
@@ -883,10 +1760,12 @@ canvas.addEventListener("pointermove", (e) => {
   gestures.move(e.pointerId, e.clientX, e.clientY, nowMs());
 });
 canvas.addEventListener("pointerup", (e) => {
+  bath.up(e.pointerId);
   fingerEnd(e.pointerId);
   gestures.up(e.pointerId, e.clientX, e.clientY, nowMs());
 });
 canvas.addEventListener("pointercancel", (e) => {
+  bath.up(e.pointerId);
   fingerEnd(e.pointerId);
   gestures.cancel(e.pointerId, nowMs());
 });
@@ -906,11 +1785,75 @@ function placeLid(k: number, arc: number, spin = 0): void {
   if (spin) lid.rotateY(spin);
 }
 
+const qPumpkinShut = new THREE.Quaternion().setFromEuler(PUMPKIN_LID_CLOSED.rot);
+const qPumpkinOff = new THREE.Quaternion().setFromEuler(PUMPKIN_LID_OFF.rot);
+
+/** The Spooky Box drops in with a bounce, shivers and glows brighter with each tap, then its top pops off. */
+function stepSpooky(r: Reveal, dt: number, now: number): void {
+  const box = stage.pumpkin;
+  const lid = stage.pumpkinLid;
+  const flicker = 0.12 * Math.sin(now * 9) + 0.08 * Math.sin(now * 23);
+  if (r.phase === "arriving") {
+    const k = Math.min(1, r.t / 0.9);
+    const y = k < 0.7 ? 6 * (1 - Math.pow(k / 0.7, 2)) : Math.sin(((k - 0.7) / 0.3) * Math.PI) * 0.35;
+    liftBox(y, box);
+    box.rotation.y = (1 - k) * 2.2;
+    stage.glowPumpkin(0.5 + flicker);
+    if (!r.landed && k >= 0.7) {
+      r.landed = true;
+      sfx.thud(0.9);
+      sfx.vibrate(18);
+      fx.emit("smoke", new THREE.Vector3(0, 0.3, 0.8), 6);
+      fx.emit("bat", new THREE.Vector3(0, 1.0, 0.6), 3);
+    }
+    if (k >= 1) {
+      liftBox(0, box);
+      box.rotation.y = 0;
+      r.phase = "waiting";
+      r.shake = 1;
+    }
+    return;
+  }
+  if (r.phase === "waiting" || (r.phase === "popping" && r.t < 0.38)) {
+    r.shake = Math.max(0, r.shake - dt * 1.6);
+    const s = r.shake;
+    lid.position.copy(PUMPKIN_LID_CLOSED.pos);
+    lid.position.y += Math.abs(Math.sin(now * 19)) * 0.1 * s;
+    lid.rotation.set(Math.cos(now * 31) * 0.05 * s, 0, Math.sin(now * 38) * 0.08 * s);
+    const w = Math.sin(now * 30);
+    box.scale.set(1 + 0.04 * s * w, 1 - 0.05 * s * Math.abs(w), 1 + 0.04 * s * w);
+    stage.glowPumpkin(Math.min(1, 0.55 + flicker + r.taps * 0.12 + s * 0.25));
+    if (r.phase === "waiting") {
+      const p = toScreen(new THREE.Vector3(0.35, 0.9, 1.2));
+      ui.hand("tap", p.x, p.y);
+    }
+  } else if (r.phase === "popping") {
+    // The top flies off with a spin and lands beside the pumpkin.
+    const k = Math.min(1, (r.t - 0.38) / 0.8);
+    const e = ease(k);
+    lid.position.lerpVectors(PUMPKIN_LID_CLOSED.pos, PUMPKIN_LID_OFF.pos, e);
+    lid.position.y += Math.sin(k * Math.PI) * 2.4;
+    lid.quaternion.slerpQuaternions(qPumpkinShut, qPumpkinOff, e);
+    lid.rotateY(Math.sin(k * Math.PI) * 2);
+    box.scale.setScalar(1);
+    stage.glowPumpkin(1);
+    if (k >= 1) r.phase = "done";
+  } else stage.glowPumpkin(0.8 + flicker);
+}
+
 function stepReveal(dt: number, now: number): void {
   const r = reveal;
   if (!r) return;
   r.t += dt;
   const lid = stage.lid;
+  if (r.spooky) {
+    stepSpooky(r, dt, now);
+    return;
+  }
+  if (r.phase === "falling") {
+    stepFalling(r, dt, now);
+    return;
+  }
   if (r.phase === "closing") {
     const k = Math.min(1, r.t / 0.6);
     placeLid(ease(k), 0.9);
@@ -951,12 +1894,31 @@ function stepHints(): void {
     const p = toScreen(squishy.group.position.clone().add(new THREE.Vector3(0.15, 0.55, 0.9)));
     ui.hand(step.move, p.x, p.y);
   } else if (!step && pointAtOpen && save.boxes > 0) {
-    const btn = document.querySelector(".ui .nav .open .ico");
+    // With the shelf slid down, show the tab that brings the Open button back.
+    const btn = ui.trayDown ? ui.trayTab.querySelector(".pill") : document.querySelector(".ui .nav .open .ico");
+    if (btn) {
+      const b = btn.getBoundingClientRect();
+      ui.hand("tap", b.left + b.width * 0.55, b.top + b.height * 0.45);
+    }
+  } else if (!step && pointAtSpooky && save.spookyBoxes > 0) {
+    const btn = document.querySelector(".ui .spooky-btn .ico");
     if (btn) {
       const b = btn.getBoundingClientRect();
       ui.hand("tap", b.left + b.width * 0.55, b.top + b.height * 0.45);
     }
   } else ui.hand(null);
+}
+
+const TRAY_SLIDE = 0.38;
+const slideStill = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+/** The world grows into the room the shelf leaves (and gives it back) along with the slide. */
+function stepTray(dt: number): void {
+  if (trayT === trayGoal) return;
+  const step = slideStill?.matches ? 1 : dt / TRAY_SLIDE;
+  trayT = trayGoal > trayT ? Math.min(trayGoal, trayT + step) : Math.max(trayGoal, trayT - step);
+  trayK = ease(trayT);
+  if (trayT === trayGoal) fit();
+  else frameCamera();
 }
 
 /** Watches how long frames take and trades a little sharpness for smoothness. */
@@ -988,6 +1950,11 @@ function stepGrowClock(dt: number): void {
   if (growClock > 0) return;
   growClock = 30;
   checkGrowUp();
+  // Halloween might have come while playing (and the sleeps until it go down).
+  if (screen === "closet") {
+    refreshSpooky();
+    checkHalloween();
+  }
   // Naps end by themselves.
   const now = Date.now();
   for (const b of save.babies) if (b.napUntil && !isNapping(b, now)) {
@@ -1011,11 +1978,14 @@ function frame(): void {
   if (screen === "title") {
     island.update(dt, now);
     renderer.render(island.scene, island.camera);
+    drawn();
     requestAnimationFrame(frame);
     return;
   }
   gestures.update(t);
   stepReveal(dt, now);
+  stepShip(dt, now);
+  bath.update(dt, now);
   squishy.update(dt, now, bounds);
   const place = placeScene(placeId);
   place.update(dt, now);
@@ -1024,8 +1994,11 @@ function frame(): void {
     visitors.update(dt, now, bounds);
     nursery.update(dt, now, bounds);
     stepBabies(dt);
+    stepWants(dt);
     stepGrowClock(dt);
+    stepMail(dt);
   }
+  stepTray(dt);
   const sway = place.sway(now);
   swayCamera(camera, sway.roll, sway.bob);
   if (popScale < 1) {
@@ -1044,8 +2017,8 @@ function frame(): void {
     }
   }
   stepHints();
-  // Glitter and gold squishies give off the odd soft glimmer.
-  if (screen === "closet" && squishy.group.visible && (squishy.def.finish === "glitter" || squishy.def.finish === "gold") && now > glimmerAt) {
+  // Glitter and gold squishies give off the odd soft glimmer, and so does one fresh from the bath.
+  if (screen === "closet" && squishy.group.visible && (squishy.def.finish === "glitter" || squishy.def.finish === "gold" || now < freshUntil) && now > glimmerAt) {
     glimmerAt = now + 1.2 + Math.random() * 1.6;
     fx.emit("glimmer", squishy.topPoint(), 1);
   }
@@ -1053,16 +2026,27 @@ function frame(): void {
   if (basketAway >= 0) {
     basketAway += dt;
     const k = Math.min(1, basketAway / 0.35);
-    stage.basket.scale.setScalar(Math.max(0.001, 1 - ease(k)));
+    const box = stage.pumpkin.visible ? stage.pumpkin : stage.basket;
+    box.scale.setScalar(Math.max(0.001, 1 - ease(k)));
     if (k >= 1) {
       basketAway = -1;
       stage.showBasket(false);
+      stage.showPumpkin(false);
       stage.basket.scale.setScalar(1);
+      stage.pumpkin.scale.setScalar(1);
+    }
+  }
+  if (padAway >= 0) {
+    padAway += dt;
+    padMat.opacity = Math.max(0, 0.9 - padAway * 0.9);
+    if (padMat.opacity <= 0) {
+      padAway = -1;
+      mailPad.visible = false;
     }
   }
   // Soft shadow under the bun, except while it sits in the opening basket.
   const p = squishy.group.position;
-  const out = !stage.basket.visible || Math.hypot(p.x, p.z) > 0.3;
+  const out = !(stage.basket.visible || stage.pumpkin.visible || bath.on) || Math.hypot(p.x, p.z) > 0.3;
   stage.shadow.visible = out && squishy.group.visible;
   if (out) {
     stage.shadow.position.set(p.x, 0.006, p.z);
@@ -1073,7 +2057,16 @@ function frame(): void {
   }
   renderer.render(stage.scene, camera);
   modelTest?.drawn(renderer.info);
+  drawn();
   requestAnimationFrame(frame);
+}
+
+let firstDrawn = false;
+/** After the first picture is drawn, the loading screen goes on the next frame, once that picture is showing. */
+function drawn(): void {
+  if (firstDrawn) return;
+  firstDrawn = true;
+  requestAnimationFrame(hideLoading);
 }
 
 // Players from before hats came get the party hat too.
@@ -1084,6 +2077,7 @@ if (save.tutorial === "done" && addHat(save, "party")) {
 goPlace(save.place, true);
 syncTeam();
 syncBabies();
+ui.setMail(save.inbox.length);
 setScreen("title");
 requestAnimationFrame(frame);
 
@@ -1099,7 +2093,12 @@ function bringIn(other: Save): void {
 }
 
 // A move link opened on this phone: the code is in the #fragment, which never reaches a server.
-if (location.hash.startsWith(HASH)) {
+// Squishy mail from a friend comes in the same spot.
+if (location.hash.startsWith(HASH) && findGift(location.hash)) {
+  const code = findGift(location.hash);
+  history.replaceState(null, "", location.pathname + location.search);
+  ui.toast(takeGift(code, location.hash), 2600);
+} else if (location.hash.startsWith(HASH)) {
   const code = findCode(location.hash);
   history.replaceState(null, "", location.pathname + location.search);
   void (async () => {
@@ -1114,4 +2113,11 @@ if (location.hash.startsWith(HASH)) {
 
 document.addEventListener("visibilitychange", () => {
   last = performance.now();
+  // Back the next day: four fresh care things.
+  if (!document.hidden && screen === "closet") {
+    refreshCare();
+    // ...and a day's more mud, if there's been no bath.
+    refreshDirt();
+    tellMuddy();
+  }
 });

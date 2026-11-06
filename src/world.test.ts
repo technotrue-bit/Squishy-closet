@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { boxHat, HATS, hatById } from "./hats";
+import { boxHat, HATS, hatById, spookyHat } from "./hats";
 import { hatsEarned, PLACES, placeById } from "./places";
 
 describe("hats and places", () => {
@@ -27,6 +27,21 @@ describe("hats and places", () => {
     let seq = [0, 0.99];
     const got = boxHat([], true, () => seq.shift() ?? 0);
     expect(got).toBe("pumpkin");
+  });
+
+  it("box hats never include the Spooky Box and bath hats", () => {
+    for (let i = 0; i < 50; i++) {
+      const got = boxHat([], true, () => (i % 2 ? 0 : (i + 0.5) / 50));
+      if (got) expect(hatById(got)?.from).toBe("box");
+    }
+  });
+
+  it("Spooky Boxes bring a spooky hat you don't have, until you have them all", () => {
+    const spooky = HATS.filter((h) => h.spooky).map((h) => h.id);
+    expect(spooky).toEqual(["witch", "pumpkin", "batBow", "candyCorn"]);
+    expect(spookyHat([], () => 0.99)).toBe("candyCorn");
+    expect(spookyHat(["witch", "pumpkin", "batBow"], () => 0)).toBe("candyCorn");
+    expect(spookyHat(spooky, () => 0)).toBeNull();
   });
 });
 

@@ -24,8 +24,24 @@ describe("move to a new phone", () => {
   it("round trips a full collection through a code", async () => {
     const s = fullSave();
     const code = await encodeSave(s);
-    expect(code.startsWith("a1")).toBe(true);
-    expect(await decodeSave(code)).toEqual(s);
+    expect(code.startsWith("a2")).toBe(true);
+    // Mud doesn't travel: squishies arrive on the new phone fresh from a bath.
+    const before = Date.now();
+    const back = (await decodeSave(code))!;
+    for (const o of Object.values(back.owned)) expect(o.washed).toBeGreaterThanOrEqual(before);
+    for (const o of [...Object.values(back.owned), ...Object.values(s.owned)]) delete o.washed;
+    expect(back).toEqual(s);
+  });
+
+  it("still reads codes made before squishies were packed as rows", async () => {
+    const s = fullSave();
+    const { giftsGot, giftsSent, inbox, ...rest } = s;
+    void [giftsGot, giftsSent, inbox];
+    const deflated = new Response(new Blob([JSON.stringify(rest)]).stream().pipeThrough(new CompressionStream("deflate-raw")));
+    const bytes = new Uint8Array(await deflated.arrayBuffer());
+    const old = "a1" + btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    expect(findCode(`#move=${old}`)).toBe(old);
+    expect(await decodeSave(old)).toEqual(s);
   });
 
   it("makes a link short enough for one QR code a phone camera can read", async () => {
@@ -88,5 +104,10 @@ describe("move to a new phone", () => {
     expect(moveLink("a1abc", here, "https://trueaigaming.com/", true)).toBe("https://trueaigaming.com/play.html?id=squishy-closet#move=a1abc");
     expect(moveLink("a1abc", here, "https://evil.example/", true)).toBe("https://squishy-closet.vercel.app/#move=a1abc");
     expect(moveLink("a1abc", here, "https://trueaigaming.com/", false)).toBe("https://squishy-closet.vercel.app/#move=a1abc");
+  });
+
+  it("points links made in the iPhone app at the site's play page", () => {
+    const app = { origin: "capacitor://localhost", pathname: "/" };
+    expect(moveLink("a1abc", app, "", false)).toBe("https://trueaigaming.com/play.html?id=squishy-closet#move=a1abc");
   });
 });

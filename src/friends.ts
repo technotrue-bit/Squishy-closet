@@ -8,11 +8,18 @@ import * as THREE from "three";
 import { Squishy, type Bounds, type Fx } from "./squishy";
 import type { SquishyDef } from "./catalog";
 import type { JobDef } from "./places";
-import type { JobSpot, PlaceScene } from "./placeScenes";
+import { FRIEND_PAD, type JobSpot, type PlaceScene } from "./placeScenes";
+import { pushOut, route, spread, type Body, type Solid } from "./nav";
 import * as sfx from "./audio";
+import type { GroundView } from "./view";
 import { moodById, sayLine, type MoodId } from "./personality";
 
 export const FRIEND_SCALE = 0.8;
+
+/** How far a friend's body reaches out from its middle, hat and all (measured in game: up to about 0.89). */
+export const FRIEND_BODY = 0.9;
+/** How fast friends that ended up too close ease apart, in units a second: quicker than a hop, so one in the way scoots aside. */
+const SPREAD_SPEED = 3;
 
 /** Up front, beside the basket: where friends come to visit, play and cuddle. */
 export const FRONT = {
@@ -40,6 +47,12 @@ export interface Friend {
   /** It is busy with something you asked for (a visit, play, a cuddle). */
   front: boolean;
   appear: number;
+  /** Counts its trips, so the rest of an old trip is dropped when it sets off somewhere new. */
+  trip: number;
+  /** Where its trip ends, while it's on the way. */
+  dest: THREE.Vector3 | null;
+  /** The job it's on its way to, so nobody else heads for the same one. */
+  aim: JobSpot | null;
 }
 
 export interface CrewEvents {
@@ -92,6 +105,10 @@ export class Crew {
   private now = 0;
   /** Set while you can't see the closet (a card or the book is open). */
   paused = false;
+  /** Things in the way besides the place's own: the one you hold, a sleeping baby. */
+  blockers: () => Solid[] = () => [];
+  /** What the screen shows, so friends wander where you can see them. */
+  private view: GroundView | null = null;
 
   constructor(
     private scene: THREE.Scene,
@@ -101,7 +118,7 @@ export class Crew {
   ) {}
 
   /** Makes the friends out match `team` (ids with their designs and hats). */
-  setTeam(team: { id: string; def: SquishyDef; hat: string | null; mood: MoodId }[]): void {
+  setTeam(team: { id: string; def: SquishyDef; hat: string | null; mood: MoodId; dirt?: number }[]): void {
     // Keep a friend that is still out; reuse a body for a newcomer.
     const keep = new Map(this.friends.map((f) => [f.id, f]));
     const spare = this.friends.filter((f) => !team.some((t) => t.id === f.id));
@@ -127,6 +144,7 @@ export class Crew {
       }
       f.sq.setHat(t.hat);
       f.sq.mood = moodById(t.mood);
+      f.sq.setDirt(t.dirt ?? 0);
       next.push(f);
     }
     for (const f of spare) this.removeFriend(f);
@@ -156,7 +174,7 @@ export class Crew {
     bubble.scale.setScalar(0.7);
     bubble.visible = false;
     this.scene.add(bubble);
-    return { id: "", sq, shadow, bubble, bubbleKey: "", state: { kind: "idle", until: 0 }, front: false, appear: 0 };
+    return { id: "", sq, shadow, bubble, bubbleKey: "", state: { kind: "idle", until: 0 }, front: false, appear: 0, trip: 0, dest: null, aim: null };
   }
 
   private removeFriend(f: Friend): void {
@@ -176,6 +194,9 @@ export class Crew {
     f.sq.lean(0, 0);
     f.sq.wakeUp();
     f.front = false;
+    f.trip++;
+    f.dest = null;
+    f.aim = null;
     f.state = { kind: "idle", until: this.now + 1 + Math.random() * 2 };
   }
 
@@ -270,8 +291,9 @@ export class Crew {
     this.frame++;
     if (!this.place) return;
     this.stepMoments(dt);
+    this.friends.forEach((f) => this.think(f, dt));
+    this.keepApart(dt);
     this.friends.forEach((f, i) => {
-      this.think(f, dt);
       // Friends far away reshape every other frame to save effort.
       f.sq.update(dt, now, bounds, f.front || (this.frame + i) % 2 === 0);
       if (f.appear > 0 && f.appear < 1) {
@@ -290,6 +312,44 @@ export class Crew {
       const worker = this.friends.find((f) => f.state.kind === "work" && f.state.spot === spot && f.sq.isHome);
       spot.show(this.progress.get(spot) ?? 0, !!worker, now, dt);
     }
+  }
+
+  /**
+   * Friends standing about never sink into each other or into the one you hold: any that ended up too
+   * close (two arriving at once, a friend landing beside one at work) ease apart, and stay out of things.
+   */
+  private keepApart(dt: number): void {
+    type B = Body & { f?: Friend };
+    const bodies: B[] = [];
+    for (const f of this.friends) {
+      if (f.sq.isHome) bodies.push({ x: f.sq.home.x, z: f.sq.home.z, r: FRIEND_BODY, f });
+      // On the way somewhere: the others make way for where it is now, it doesn't get pushed off course.
+      else bodies.push({ x: f.sq.group.position.x, z: f.sq.group.position.z, r: FRIEND_BODY, still: true });
+    }
+    // The one you hold, a sleeping baby: they stay put, friends make room.
+    for (const b of this.blockers()) bodies.push({ x: b.x, z: b.z, r: b.r, still: true });
+    const moved = spread(bodies, SPREAD_SPEED * dt);
+    if (!moved.size) return;
+    const solids = this.place?.solids ?? [];
+    for (const b of moved) {
+      if (!b.f) continue;
+      pushOut(b, solids, FRIEND_PAD);
+      b.f.sq.home.x = b.x;
+      b.f.sq.home.z = b.z;
+    }
+  }
+
+  /**
+   * The other friends, as things to keep clear of: where each is, or where it's heading. `give` shrinks
+   * them a little, so one standing just beside another still counts as outside it and hops round, not through.
+   */
+  private othersAsSolids(f: Friend, give = 0): Solid[] {
+    return this.friends
+      .filter((o) => o !== f)
+      .map((o) => {
+        const at = o.dest ?? (o.sq.isHome ? o.sq.home : o.sq.group.position);
+        return { x: at.x, z: at.z, r: FRIEND_BODY - give };
+      });
   }
 
   private drawBubbleFor(f: Friend): void {
@@ -449,7 +509,9 @@ export class Crew {
     const p = this.place!;
     // Personality tips the odds: hard workers pick jobs, chatty ones find a pal.
     const m = f.sq.mood;
-    const work = 0.62 * m.work;
+    // On a wide screen there's more to explore, so a little less time at jobs.
+    const wide = !!this.view?.wide;
+    const work = 0.62 * m.work * (wide ? 0.7 : 1);
     const chat = 0.18 * m.chat;
     const r = Math.random() * Math.max(1, work + chat + 0.2);
     if (m.id === "sleepy" && Math.random() < 0.15) {
@@ -457,8 +519,10 @@ export class Crew {
       f.state = { kind: "idle", until: this.now + 8 + Math.random() * 6 };
       return;
     }
-    const busy = new Set(this.friends.map((o) => (o.state.kind === "work" ? o.state.spot : null)));
-    const free = p.spots.filter((s) => !busy.has(s));
+    // A job is taken once someone sets off for it, and one right beside someone else has no room.
+    const busy = new Set(this.friends.map((o) => (o.state.kind === "work" ? o.state.spot : o.aim)));
+    const others = this.othersAsSolids(f);
+    const free = p.spots.filter((s) => !busy.has(s) && others.every((o) => Math.hypot(s.at.x - o.x, s.at.z - o.z) >= o.r + FRIEND_PAD));
     if (r < work && free.length) {
       const spot = free[Math.floor(Math.random() * free.length)];
       if ((this.progress.get(spot) ?? 0) >= 1) this.progress.set(spot, 0);
@@ -466,6 +530,7 @@ export class Crew {
         f.sq.yawTarget = spot.yaw;
         f.state = { kind: "work", spot, beat: 0.3 };
       });
+      f.aim = spot;
       return;
     }
     const pal = this.friends.find((o) => o !== f && o.state.kind === "idle" && o.sq.isHome);
@@ -473,7 +538,8 @@ export class Crew {
       const mid = f.sq.home.clone().add(pal.sq.home).multiplyScalar(0.5);
       const dir = pal.sq.home.clone().sub(f.sq.home).setY(0);
       if (dir.lengthSq() < 0.01) dir.set(1, 0, 0);
-      dir.normalize().multiplyScalar(0.85);
+      // Face to face, close but not squished together.
+      dir.normalize().multiplyScalar((FRIEND_BODY + FRIEND_PAD) / 2);
       const until = this.now + 4 + Math.random() * 2;
       const a: State = { kind: "chat", with: pal, until, beat: 0.6 };
       const b: State = { kind: "chat", with: f, until, beat: 0.2 };
@@ -481,23 +547,117 @@ export class Crew {
       this.goTo(pal, mid.clone().add(dir), () => (pal.state = b));
       return;
     }
-    const spot = p.wander[Math.floor(Math.random() * p.wander.length)];
+    const spot = wide && Math.random() < 0.75 ? (this.roamSpot(f, 0.08) ?? this.wanderSpot()) : this.wanderSpot();
     this.goTo(f, spot, () => {
       f.sq.yawTarget = (Math.random() - 0.5) * 0.8;
       f.state = { kind: "idle", until: this.now + 2.5 + Math.random() * 3 };
     });
   }
 
-  private goTo(f: Friend, at: THREE.Vector3, then: () => void): void {
-    f.state = { kind: "move" };
-    // Don't land right on top of another friend.
-    const target = at.clone();
-    for (const o of this.friends) {
-      if (o === f) continue;
-      const d = Math.hypot(o.sq.home.x - target.x, o.sq.home.z - target.z);
-      if (d < 1.3) target.x += target.x > o.sq.home.x ? 1.3 - d : d - 1.3;
+  /** One of the place's own spots to wander to, one you can see if there is one. */
+  private wanderSpot(): THREE.Vector3 {
+    const all = this.place!.wander;
+    const seen = this.view ? all.filter((w) => this.view!.inset(w) > 0.12) : all;
+    const from = seen.length ? seen : all;
+    return from[Math.floor(Math.random() * from.length)];
+  }
+
+  /**
+   * Somewhere open on the ground you can see, at least `inset` in from the sides of the screen, roomy
+   * away from the others; `side` (-1 left, 1 right) picks a side of the screen when it can.
+   */
+  private roamSpot(f: Friend, inset: number, side = 0): THREE.Vector3 | null {
+    const p = this.place;
+    const v = this.view;
+    if (!p || !v) return null;
+    const r = p.roam;
+    const solids = [...p.solids, ...this.blockers()];
+    const others = this.friends.filter((o) => o !== f).map((o) => o.dest ?? o.sq.home);
+    let best: THREE.Vector3 | null = null;
+    let bestScore = -Infinity;
+    for (let i = 0; i < 14; i++) {
+      const at = new THREE.Vector3(r.minX + Math.random() * (r.maxX - r.minX), 0, r.minZ + Math.random() * (r.maxZ - r.minZ));
+      pushOut(at, solids, FRIEND_PAD);
+      if (at.x < r.minX || at.x > r.maxX || at.z < r.minZ || at.z > r.maxZ) continue;
+      if (v.inset(at) < inset) continue;
+      // Room around it, a bit of randomness so it isn't always the same far corner.
+      let room = 6;
+      for (const o of others) room = Math.min(room, Math.hypot(o.x - at.x, o.z - at.z));
+      const score = room + Math.random() * 1.5 - (side && Math.sign(at.x) !== side ? 4 : 0);
+      if (score > bestScore) {
+        bestScore = score;
+        best = at;
+      }
     }
-    f.sq.hopTo(target, { then });
+    return best;
+  }
+
+  /**
+   * The screen changed shape (the phone turned): anyone now off to the side comes hopping back into view,
+   * from the side it was on, and nobody sets off for somewhere you can't see.
+   */
+  reframe(view: GroundView): void {
+    this.view = view;
+    if (!this.place) return;
+    for (const f of this.friends) {
+      // Up front beside the basket is always in view; a job spot is the same in both ways up.
+      if (f.front || f.state.kind === "work") continue;
+      const at = f.sq.group.position;
+      const dest = f.dest ?? f.sq.home;
+      if (view.inset(at) > 0.04 && view.inset(dest) > 0.04) continue;
+      const side = Math.sign(at.x) || 1;
+      this.release(f);
+      // Far past the edge: it comes back from just outside, so it's in view again in a moment.
+      if (view.inset(at) < 0) {
+        const ex = view.edgeX(at.z, side);
+        if (Math.abs(at.x) > Math.abs(ex)) f.sq.placeAt(new THREE.Vector3(ex, 0, at.z));
+      }
+      const to = this.roamSpot(f, 0.22, side) ?? this.wanderSpot();
+      this.goTo(
+        f,
+        to,
+        () => {
+          f.sq.yawTarget = (Math.random() - 0.5) * 0.8;
+          f.state = { kind: "idle", until: this.now + 1.5 + Math.random() * 2 };
+        },
+        1.25,
+      );
+    }
+  }
+
+  private goTo(f: Friend, at: THREE.Vector3, then: () => void, stride?: number): void {
+    f.state = { kind: "move" };
+    // Don't land on top of another friend, or inside anything; hop round the others on the way too.
+    const target = at.clone();
+    const hard = [...(this.place?.solids ?? []), ...this.blockers()];
+    const solids = [...hard, ...this.othersAsSolids(f)];
+    pushOut(target, solids, FRIEND_PAD);
+    // Things win over friends: never pushed into the couch to make room for someone.
+    pushOut(target, hard, FRIEND_PAD);
+    // Hop the way round anything in between, corner to corner.
+    const from = f.sq.isHome ? f.sq.home : f.sq.group.position;
+    // Round the others too when there's a way; if they're all in the way, round just the things (they'll make room).
+    let path = route(from, target, [...hard, ...this.othersAsSolids(f, 0.2)], FRIEND_PAD);
+    if (!path.length) path = route(from, target, hard, FRIEND_PAD);
+    const way = path.map((p) => new THREE.Vector3(p.x, target.y, p.z));
+    const trip = ++f.trip;
+    // Nowhere to go without bumping into something: it stays put and carries on from here.
+    if (!way.length) {
+      then();
+      return;
+    }
+    f.dest = target;
+    const done = () => {
+      if (f.trip !== trip) return;
+      f.dest = null;
+      then();
+    };
+    const next = (i: number) => {
+      if (f.trip !== trip) return;
+      if (i === way.length - 1) f.sq.hopTo(way[i], { stride, then: done });
+      else f.sq.hopTo(way[i], { stride, then: () => next(i + 1) });
+    };
+    next(0);
   }
 
   // ---- moments up front -----------------------------------------------------
