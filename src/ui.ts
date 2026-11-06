@@ -30,6 +30,9 @@ const CSS = `
 .ui .title .logo small { display: block; font-size: 0.36em; margin-top: 10px; color: #fff; text-shadow: 0 2px 0 #b98ae8; transform: rotate(3deg); }
 .ui .play { position: absolute; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 11vh); transform: translateX(-50%); min-width: 220px; padding: 18px 44px; border-radius: 999px; font-size: 38px; font-weight: 900; color: #fff !important; background: linear-gradient(180deg, #ff9cc8, #ff4f8d); box-shadow: 0 7px 0 #c2346c, 0 14px 30px rgba(200,50,110,0.4); animation: bob 1.6s ease-in-out infinite; }
 .ui .play:active { transform: translateX(-50%) translateY(5px); box-shadow: 0 2px 0 #c2346c; }
+.ui .leave { position: absolute; left: 50%; bottom: calc(env(safe-area-inset-bottom) + max(12px, 3vh)); transform: translateX(-50%); padding: 10px 22px; border-radius: 999px; font-size: 17px; font-weight: 900; color: #c2346c !important; background: rgba(255,255,255,0.85); box-shadow: 0 3px 0 rgba(200,110,150,0.35); display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.ui .leave svg { width: 18px; height: 18px; flex: none; }
+.ui .leave:active { transform: translateX(-50%) translateY(2px); box-shadow: 0 1px 0 rgba(200,110,150,0.35); }
 @keyframes bob { 0%,100% { margin-bottom: 0; } 50% { margin-bottom: 8px; } }
 
 .ui .love { position: absolute; top: calc(env(safe-area-inset-top) + 12px); left: calc(env(safe-area-inset-left) + 12px); display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.8); padding: 6px 10px 6px 6px; border-radius: 999px; box-shadow: 0 3px 0 rgba(200,110,150,0.3); }
@@ -350,6 +353,7 @@ const BOOK = `<svg viewBox="0 0 40 40"><path d="M7 7c5-2 9-1 13 2v24c-4-3-8-4-13
 const ISLAND = `<svg viewBox="0 0 40 40"><ellipse cx="20" cy="30" rx="16" ry="5" fill="#8fd8f0"/><ellipse cx="20" cy="27" rx="12" ry="5" fill="#ffe2b0"/><ellipse cx="20" cy="25" rx="9" ry="3.5" fill="#bfeaa0"/><path d="M19 25c0-6 1-11 3-14" stroke="#c98d58" stroke-width="2.4" fill="none" stroke-linecap="round"/><path d="M22 11c-4-2-8-1-9 2 3-1 6 0 9-2zM22 11c3-3 8-3 9 0-3-1-6 0-9 0zM22 11c1 3 0 6-3 8 1-3 1-6 3-8z" fill="#7fc65a"/></svg>`;
 const HAT = `<svg viewBox="0 0 40 40"><path d="M8 29c0-8 5-17 12-17s12 9 12 17z" fill="#fff"/><path d="M5 29h30c0 3-6 4-15 4S5 32 5 29z" fill="#fff6e0"/><path d="M9 24h22" stroke="#ff7fb0" stroke-width="4"/><circle cx="20" cy="10" r="4" fill="#ff7fb0"/></svg>`;
 const PLACE = `<svg viewBox="0 0 40 40"><path d="M4 27c5-3 9 3 16 0s11 3 16 0v7H4z" fill="#fff"/><path d="M20 6v18" stroke="#fff6e0" stroke-width="2.5"/><path d="M21 7l10 15H21z" fill="#fff"/><path d="M19 10l-8 12h8z" fill="#ffe0ec"/><path d="M10 24h20l-3 4H13z" fill="#ffd27a"/></svg>`;
+const DOOR = `<svg viewBox="0 0 24 24"><path d="M5 3h9a2 2 0 0 1 2 2v3h-2V5H6v14h8v-3h2v3a2 2 0 0 1-2 2H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" fill="#e2508c"/><path d="M17 8l4 4-4 4v-3h-7v-2h7z" fill="#e2508c"/></svg>`;
 const GEAR = `<svg width="28" height="28" viewBox="0 0 28 28"><path d="M14 4l2 .3.7 2.4 2 1 2.3-1 1.6 1.6-1 2.3 1 2 2.4.7v2.3l-2.4.7-1 2 1 2.3-1.6 1.6-2.3-1-2 1-.7 2.4h-2.3l-.7-2.4-2-1-2.3 1L6.4 21l1-2.3-1-2L4 16v-2.3l2.4-.7 1-2-1-2.3L8 7.1l2.3 1 2-1L13 4.3z" fill="#e2508c"/><circle cx="14" cy="14.8" r="4" fill="#fff"/></svg>`;
 const JOBS = `<svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="19" rx="4" fill="#8fdcff"/><rect x="8" y="1.5" width="8" height="4" rx="2" fill="#2a86c4"/><path d="M8 13l3 3 5-6" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const CARE = `<svg viewBox="0 0 40 40"><path d="M20 34C9 26 5 21 5 14.5 5 9 9.5 6 13.5 6c3 0 5 1.5 6.5 3.6C21.5 7.5 23.5 6 26.5 6 30.5 6 35 9 35 14.5 35 21 31 26 20 34z" fill="#fff"/><path d="M31 3l1.2 3 3 1.2-3 1.2L31 11.4l-1.2-3-3-1.2 3-1.2z" fill="#fff6a8"/><ellipse cx="13" cy="13" rx="3" ry="2" fill="#ffd6e6" transform="rotate(-35 13 13)"/></svg>`;
@@ -378,6 +382,8 @@ export type HandMove = "press" | "pet" | "tickle" | "toss" | "tap" | "hug";
 
 export interface UiHandlers {
   play(): void;
+  /** Leave the game for TrueAIGaming, from the title screen. Null where there is no site to go back to (the app). */
+  leave: (() => void) | null;
   toggleSound(): boolean;
   openBox(): void;
   openBook(): void;
@@ -545,6 +551,7 @@ export class Ui {
       <div class="layer title">
         <div class="logo">Aurora's<br>World<small>Squishy Island</small></div>
         <button class="play">Play!</button>
+        ${h.leave ? `<button class="leave">${DOOR}Leave game</button>` : ""}
       </div>
       <div class="layer closet">
         <div class="love">${HEART}<div class="bar"><div class="fill"></div></div><span class="gift">${GIFT}</span></div>
@@ -615,6 +622,8 @@ export class Ui {
       if (e.target === this.sheetEl) this.closeSheet();
     });
     q(".play").addEventListener("click", () => h.play());
+    const leave = h.leave;
+    if (leave) q(".leave").addEventListener("click", () => leave());
     this.openBtn.addEventListener("click", () => h.openBox());
     q(".book-btn").addEventListener("click", () => h.openBook());
     q(".island-btn").addEventListener("click", () => h.goIsland());
