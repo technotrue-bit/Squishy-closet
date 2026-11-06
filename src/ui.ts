@@ -28,6 +28,9 @@ const CSS = `
 .ui .gear { position: absolute; z-index: 3; top: calc(env(safe-area-inset-top) + 10px); right: calc(env(safe-area-inset-right) + 12px); }
 
 .ui .title .logo { position: absolute; top: calc(env(safe-area-inset-top) + 9vh); left: 0; right: 0; text-align: center; font-weight: 900; font-size: min(13vw, 64px); line-height: 0.95; color: #fff; text-shadow: 0 4px 0 #e86fa3, 0 8px 22px rgba(180,60,120,0.35); transform: rotate(-3deg); }
+.ui.poster > :not(.poster-logo) { display: none !important; }
+.ui .poster-logo { position: absolute; top: 3.5vh; left: 0; right: 0; text-align: center; font-weight: 900; font-size: min(11vh, 13vw); line-height: 1; color: #fff; text-shadow: 0 0.06em 0 #e86fa3, 0 0.12em 0.3em rgba(180,60,120,0.35); transform: rotate(-2deg); pointer-events: none; }
+.ui .poster-logo small { display: block; font-size: 0.4em; margin-top: 0.2em; color: #fff; text-shadow: 0 0.06em 0 #c0703a, 0 0.1em 0.3em rgba(160,80,40,0.35); transform: rotate(2deg); }
 .ui .title .logo small { display: block; font-size: 0.36em; margin-top: 10px; color: #fff; text-shadow: 0 2px 0 #b98ae8; transform: rotate(3deg); }
 .ui .play { position: absolute; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 11vh); transform: translateX(-50%); min-width: 220px; padding: 18px 44px; border-radius: 999px; font-size: 38px; font-weight: 900; color: #fff !important; background: linear-gradient(180deg, #ff9cc8, #ff4f8d); box-shadow: 0 7px 0 #c2346c, 0 14px 30px rgba(200,50,110,0.4); animation: bob 1.6s ease-in-out infinite; }
 .ui .play:active { transform: translateX(-50%) translateY(5px); box-shadow: 0 2px 0 #c2346c; }
@@ -651,6 +654,15 @@ export class Ui {
   show(screen: Screen): void {
     for (const [k, el] of Object.entries(this.layers)) el.classList.toggle("on", k === screen);
     this.root.classList.toggle("bath-on", screen === "bath");
+  }
+
+  /** The poster for the game card: every button hidden, just the logo (and the season's greeting) over the place. */
+  poster(dress: Dress): void {
+    this.root.classList.add("poster");
+    const logo = document.createElement("div");
+    logo.className = "poster-logo";
+    logo.innerHTML = `Aurora's World${dress ? `<small>${dress === "halloween" ? "Happy Halloween! 🎃" : "Happy Fall! 🍂"}</small>` : ""}`;
+    this.root.appendChild(logo);
   }
 
   /** The title says Happy Halloween all October, and Happy Fall all November. */

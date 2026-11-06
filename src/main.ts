@@ -13,6 +13,7 @@ import { Gestures, type GestureEvent } from "./gestures";
 import { Squishy, type Bounds } from "./squishy";
 import { buildStage, BASKET_FLOOR, BASKET_WALL, canvasTex, LID_CLOSED, LID_REST } from "./scene";
 import { buildIsland } from "./island";
+import { isPoster, posterSave } from "./poster";
 import { Effects } from "./fx";
 import { Ui, type HandMove, type Screen, type ShelfState, type UiHandlers } from "./ui";
 import { Thumbs } from "./thumbs";
@@ -96,7 +97,9 @@ renderer.toneMappingExposure = 1.0;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 app.appendChild(renderer.domElement);
 
-const save = loadSave();
+/** The poster for TrueAIGaming's game card (see poster.ts): a made-up collection that is never saved. */
+const poster = isPoster(location.search);
+const save = poster ? posterSave(dressFor(today()), Date.now()) : loadSave();
 sfx.setSound(save.sound);
 const stage = buildStage(renderer);
 const island = buildIsland(today());
@@ -113,6 +116,7 @@ let trayGoal = trayK;
 let trayT = trayK;
 let keepAsked = false;
 const persist = () => {
+  if (poster) return;
   storeSave(save);
   // Once there is something to lose, ask the browser to keep it.
   if (!keepAsked && Object.keys(save.owned).length) {
@@ -2067,7 +2071,10 @@ goPlace(save.place, true);
 syncTeam();
 syncBabies();
 ui.setMail(save.inbox.length);
-setScreen("title");
+if (poster) {
+  ui.poster(dressFor(today()));
+  setScreen("closet");
+} else setScreen("title");
 requestAnimationFrame(frame);
 
 // ---- squishies from another phone ---------------------------------------
@@ -2083,7 +2090,9 @@ function bringIn(other: Save): void {
 
 // A move link opened on this phone: the code is in the #fragment, which never reaches a server.
 // Squishy mail from a friend comes in the same spot.
-if (location.hash.startsWith(HASH) && findGift(location.hash)) {
+if (poster) {
+  // The poster takes in no squishy mail and no move links.
+} else if (location.hash.startsWith(HASH) && findGift(location.hash)) {
   const code = findGift(location.hash);
   history.replaceState(null, "", location.pathname + location.search);
   ui.toast(takeGift(code, location.hash), 2600);
