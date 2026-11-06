@@ -80,6 +80,8 @@ import { clearTestUnlock, FREE_PLACES, fullWhy, hasFull, locksOn, placeOpen, squ
 import { shop, testShop, type BuyResult } from "./payments";
 import { watchApple } from "./apple";
 import { inApp } from "./native";
+import { GAME } from "./mirror";
+import { siteHome } from "./site";
 import { hideLoading } from "./loading";
 
 const app = document.getElementById("app")!;
@@ -1255,6 +1257,25 @@ function setScreen(s: Screen): void {
   fit();
 }
 
+/**
+ * Leave game, on the title screen: back to TrueAIGaming's home page. Played inside the site's play page, the whole
+ * page goes (not just the game's frame). Not in the app, where there is no site to go back to.
+ */
+function leaveGame(): void {
+  sfx.pop();
+  persist();
+  const url = siteHome(location.ancestorOrigins?.[0], document.referrer);
+  // A moment for the pop, and for the site's copy of the save to hear the last change.
+  window.setTimeout(() => {
+    try {
+      (window.top ?? window).location.href = url;
+    } catch {
+      // A frame that may not move the page asks the page to go instead.
+      window.parent.postMessage({ type: "tag:leave", game: GAME, v: 1, url }, "*");
+    }
+  }, 250);
+}
+
 const ui = new Ui(
   {
     play: () => {
@@ -1263,6 +1284,7 @@ const ui = new Ui(
       if (Object.keys(save.owned).length === 0) startBox(true);
       else setScreen("closet");
     },
+    leave: inApp() ? null : leaveGame,
     toggleSound: () => {
       save.sound = !save.sound;
       sfx.unlockAudio();
