@@ -179,17 +179,24 @@
     <div id="boot-error" style="display:none;position:fixed;inset:0;align-items:center;justify-content:center;padding:24px;text-align:center;font:700 16px system-ui,sans-serif;color:#5a2a4a;background:#ffc6df"></div>
     <script>
       // Show a readable message instead of a blank pink screen if the game cannot start.
+      // Only while it is starting: once the loading screen is done (loading.ts) the game is running, and a later
+      // error must never cover it. And only for the game's own errors: one with no file named ("Script error.") came
+      // from a script that isn't the game's, such as one an app's built-in browser adds to every page.
       (function () {
         function show(msg) {
           var el = document.getElementById("boot-error");
           if (!el || el.dataset.shown) return;
-          el.dataset.shown = "1";
           var ld = document.getElementById("loading");
-          if (ld) ld.remove();
+          if (!ld || ld.dataset.done) return;
+          el.dataset.shown = "1";
+          ld.remove();
           el.style.display = "flex";
           el.textContent = "Aurora's World could not start: " + msg;
         }
-        window.addEventListener("error", function (e) { show(e.message || "unknown error"); });
+        window.addEventListener("error", function (e) {
+          if (!e.filename) return;
+          show(e.message || "unknown error");
+        });
         window.addEventListener("unhandledrejection", function (e) { show(String(e.reason)); });
       })();
       // Two fingers are a hug, never a page zoom: block pinch and double tap zoom.
