@@ -69,34 +69,43 @@ function segDist(a: Pt, b: Pt, c: Pt): number {
   return Math.hypot(a.x + vx * t - c.x, a.z + vz * t - c.z);
 }
 
-function clear(a: Pt, b: Pt, solids: readonly Solid[], pad: number, skip: ReadonlySet<Solid>): boolean {
-  for (const s of solids) {
-    if (skip.has(s)) continue;
-    if (segDist(a, b, s) < s.r + pad - 1e-4) return false;
-  }
+/** A solid with how close a way may come to its middle. */
+interface Keep {
+  s: Solid;
+  need: number;
+}
+
+function clear(a: Pt, b: Pt, keeps: readonly Keep[]): boolean {
+  for (const k of keeps) if (segDist(a, b, k.s) < k.need - 1e-4) return false;
   return true;
 }
 
-const inside = (p: Pt, s: Solid, pad: number) => Math.hypot(p.x - s.x, p.z - s.z) < s.r + pad - 1e-4;
+const inside = (p: Pt, k: Keep) => Math.hypot(p.x - k.s.x, p.z - k.s.z) < k.need - 1e-4;
 
 /**
  * The way from `from` to `to` around the solids: the corners to hop to, ending at `to` (not including
- * `from`). A thing the squishy is already standing in is ignored, so it can always step out.
+ * `from`). A squishy already standing too close to a thing (or heading for a spot too close) may step
+ * away from it, but never in any deeper, so it never hops through it on the way out.
  * Empty when there is no way round at all (it never goes through).
  */
 export function route(from: Pt, to: Pt, solids: readonly Solid[], pad: number): Pt[] {
-  const skip = new Set(solids.filter((s) => inside(from, s, pad) || inside(to, s, pad)));
-  if (clear(from, to, solids, pad, skip)) return [{ x: to.x, z: to.z }];
+  const keeps: Keep[] = solids.map((s) => {
+    const full = s.r + pad;
+    const df = Math.hypot(from.x - s.x, from.z - s.z);
+    const dt = Math.hypot(to.x - s.x, to.z - s.z);
+    // Too close already: keep at least as far as it is now (a hair less, so it can set off).
+    return { s, need: Math.min(full, df - 1e-3, dt - 1e-3) };
+  });
+  if (clear(from, to, keeps)) return [{ x: to.x, z: to.z }];
   // Corners: a ring of points just outside each solid, leaving out any inside another one.
   const nodes: Pt[] = [{ x: from.x, z: from.z }, { x: to.x, z: to.z }];
-  const live = solids.filter((s) => !skip.has(s));
-  for (const s of live) {
-    const rr = (s.r + pad) * 1.09 + 0.04;
+  for (const k of keeps) {
+    const rr = (k.s.r + pad) * 1.09 + 0.04;
     const n = Math.max(8, Math.min(16, Math.ceil((Math.PI * 2 * rr) / 0.8)));
-    for (let k = 0; k < n; k++) {
-      const a = (k / n) * Math.PI * 2;
-      const p = { x: s.x + Math.cos(a) * rr, z: s.z + Math.sin(a) * rr };
-      if (!live.some((o) => inside(p, o, pad))) nodes.push(p);
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      const p = { x: k.s.x + Math.cos(a) * rr, z: k.s.z + Math.sin(a) * rr };
+      if (!keeps.some((o) => inside(p, o))) nodes.push(p);
     }
   }
   // Shortest way through the corners (Dijkstra; there are only a few dozen of them).
@@ -113,7 +122,7 @@ export function route(from: Pt, to: Pt, solids: readonly Solid[], pad: number): 
     for (let v = 0; v < n; v++) {
       if (done[v] || v === u) continue;
       const d = dist[u] + Math.hypot(nodes[u].x - nodes[v].x, nodes[u].z - nodes[v].z);
-      if (d < dist[v] && clear(nodes[u], nodes[v], solids, pad, skip)) {
+      if (d < dist[v] && clear(nodes[u], nodes[v], keeps)) {
         dist[v] = d;
         prev[v] = u;
       }
@@ -134,4 +143,51 @@ export function routeLength(from: Pt, way: readonly Pt[]): number {
     a = b;
   }
   return len;
+}
+
+/** Something round standing on the ground: `r` is how far its body reaches; a `still` one isn't moved. */
+export interface Body extends Pt {
+  r: number;
+  still?: boolean;
+}
+
+/**
+ * Eases apart any bodies sinking into each other, each moving at most `step`, so nobody stands
+ * inside anybody. Returns the bodies it moved.
+ */
+export function spread<T extends Body>(bodies: readonly T[], step: number): Set<T> {
+  const moved = new Set<T>();
+  for (let i = 0; i < bodies.length; i++) {
+    for (let j = i + 1; j < bodies.length; j++) {
+      const a = bodies[i];
+      const b = bodies[j];
+      if (a.still && b.still) continue;
+      let dx = b.x - a.x;
+      let dz = b.z - a.z;
+      let d = Math.hypot(dx, dz);
+      const over = a.r + b.r - d;
+      if (over <= 1e-4) continue;
+      // Right on top of each other: apart sideways.
+      if (d < 1e-6) {
+        dx = 1;
+        dz = 0;
+        d = 1;
+      }
+      const ux = dx / d;
+      const uz = dz / d;
+      const share = a.still || b.still ? over : over / 2;
+      const k = Math.min(share, step);
+      if (!a.still) {
+        a.x -= ux * k;
+        a.z -= uz * k;
+        moved.add(a);
+      }
+      if (!b.still) {
+        b.x += ux * k;
+        b.z += uz * k;
+        moved.add(b);
+      }
+    }
+  }
+  return moved;
 }
