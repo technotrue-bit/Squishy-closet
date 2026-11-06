@@ -1,5 +1,7 @@
-// When it is Halloween in Aurora's World, and when it is cozy autumn. All of October every place dresses up for a cozy, spooky evening and
-// Spooky Hollow lights up on the island. On Halloween itself (October 31) a Spooky Box comes for everyone, and every
+// When it is Halloween in Aurora's World, and when it is cozy autumn. The places follow the real seasons, and a
+// holiday takes over while it lasts: fall begins at the equinox (September 22) in cozy autumn, all of October every
+// place dresses up for a cozy, spooky evening and Spooky Hollow lights up on the island, then cozy autumn comes back
+// until winter begins (December 21). On Halloween itself (October 31) a Spooky Box comes for everyone, and every
 // box earned with love that day is a Spooky Box too. A grown-up can try any day by adding ?date=2026-10-31 to the
 // game's address.
 
@@ -8,10 +10,20 @@ import { isOctober } from "./boxes";
 /** The spooky season: all of October. */
 export const isSpookySeason = (d: Date): boolean => isOctober(d);
 
-/** Cozy autumn: all of November, after Halloween and on into the holidays. */
-export const isAutumnSeason = (d: Date): boolean => d.getMonth() === 10;
+/**
+ * Fall, the real season: from the fall equinox (September 22) until winter begins (December 21). Halloween dresses
+ * the places up for all of October, in the middle of it; cozy autumn is the rest of fall, into the holidays.
+ */
+export function isAutumnSeason(d: Date): boolean {
+  const m = d.getMonth();
+  const day = d.getDate();
+  return (m === 8 && day >= 22) || m === 9 || m === 10 || (m === 11 && day < 21);
+}
 
-/** How the places dress up today: spooky in October, cozy autumn in November, or just as they are. */
+/**
+ * How the places dress up today: the season, unless a holiday takes over. Spooky for Halloween (all October), cozy
+ * autumn the rest of fall, or just as they are.
+ */
 export type Dress = "halloween" | "autumn" | null;
 export const dressFor = (d: Date): Dress => (isSpookySeason(d) ? "halloween" : isAutumnSeason(d) ? "autumn" : null);
 

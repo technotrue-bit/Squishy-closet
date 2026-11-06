@@ -2,7 +2,8 @@
 // goes straight to the beach with four squishies out playing in hats that suit the day (a witch hat in October, a
 // pom beanie in the fall), the place dressed for the season, the logo on top and no buttons. A screenshot of it is
 // the card, so the card follows the seasons too. It plays with a made-up collection and never saves, so it can
-// never touch anyone's real squishies.
+// never touch anyone's real squishies. The page names its look on <html data-dress="..."> (halloween, autumn or
+// plain), so the site's card job can tell when the look has changed and only retake the card then.
 
 import { freshSave, type Save } from "./save";
 import type { Dress } from "./season";
