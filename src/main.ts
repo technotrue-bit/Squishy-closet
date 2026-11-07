@@ -1233,8 +1233,11 @@ function stepShip(dt: number, now: number): void {
 
 function setScreen(s: Screen): void {
   screen = s;
-  // Back on the island: your own squishies hop about it.
-  if (s === "title") island.setSquishies(islandCast(save.owned, save.active, save.team));
+  // Back on the island: your own squishies jump out of the case one by one and hop about it.
+  if (s === "title") {
+    island.setSquishies(islandCast(save.owned, save.active, save.team));
+    island.intro();
+  }
   ui.show(s);
   ui.hand(null);
   crew.paused = s !== "closet";

@@ -1,7 +1,9 @@
 // Squishy Island, the title screen: a round pastel island in a calm sea, the
-// Squishy Closet in the middle and eight places around it where squishies
-// live. Your own squishies hop about, in their hats, while the camera drifts
-// slowly round; before you have any, little plain buns hop there instead. Spooky
+// squishy case in the middle (the very steamer new squishies come in) and eight
+// places around it where squishies live. When the island comes up the case's
+// lid pops and your own squishies jump out one by one, then hop about, in their
+// hats, while the camera drifts slowly round; before you have any, little plain
+// buns jump out and hop there instead. Spooky
 // Hollow lights up in October, and the whole island dresses up for Halloween. The rest of fall it glows golden
 // for cozy autumn.
 
@@ -12,6 +14,7 @@ import { dressFor } from "./season";
 import { defById } from "./catalog";
 import { Squishy } from "./squishy";
 import { BOTTOM_Y } from "./bao";
+import { steamerCase } from "./scene";
 
 export interface Island {
   scene: THREE.Scene;
@@ -20,6 +23,8 @@ export interface Island {
   update(dt: number, t: number): void;
   /** Who hops about: your squishies, in order, with their hats. None brings back the plain buns. */
   setSquishies(cast: readonly IslandSquishy[]): void;
+  /** Closes everyone back in the case, to jump out again one by one. */
+  intro(): void;
 }
 
 export interface IslandSquishy {
@@ -29,6 +34,47 @@ export interface IslandSquishy {
 
 /** How many squishies hop about the island at most. */
 export const ISLAND_MAX = 10;
+
+/**
+ * The jump out of the case, in seconds from when the island comes up: the lid pops open, then the squishies leap
+ * out one at a time, each jump taking `jump`; once the last is out the lid flops shut.
+ */
+export const INTRO = { lidAt: 0.55, firstAt: 0.95, jump: 0.85, open: -1.2 } as const;
+
+/** Time between one squishy jumping out and the next: quicker when there are lots, so nobody waits long. */
+export const introGap = (n: number): number => Math.min(0.6, 4.2 / Math.max(1, n));
+
+/** How far the `i`th of `n` is through its jump out: below 0 it's still in the case, from 1 it's out hopping. */
+export function jumpProgress(i: number, n: number, t: number): number {
+  return (t - (INTRO.firstAt + i * introGap(n))) / INTRO.jump;
+}
+
+/** When the lid starts to close: once the last one is well on its way. */
+const lidShutAt = (n: number) => INTRO.firstAt + Math.max(0, n - 1) * introGap(n) + INTRO.jump * 0.55;
+
+/**
+ * How far the case's lid is open (radians about its back hinge, 0 shut, negative open): it pops up, gives a little
+ * kick each time someone jumps out, and flops shut with a bounce after the last.
+ */
+export function lidAngle(n: number, t: number): number {
+  if (n <= 0 || t <= INTRO.lidAt) return 0;
+  const shut = lidShutAt(n);
+  if (t < shut) {
+    // Pops up with a little overshoot.
+    const k = Math.min(1, (t - INTRO.lidAt) / 0.3);
+    let a = INTRO.open * (k < 1 ? Math.sin((k * Math.PI) / 2) * (1 + 0.15 * Math.sin(k * Math.PI)) : 1);
+    for (let i = 0; i < n; i++) {
+      const s = (t - (INTRO.firstAt + i * introGap(n))) / 0.3;
+      if (s >= 0 && s < 1) a -= 0.2 * Math.sin(s * Math.PI);
+    }
+    return a;
+  }
+  const k = (t - shut) / 0.3;
+  if (k < 1) return INTRO.open * (1 - k * k);
+  // A clack and a small bounce once it's down.
+  const b = (k - 1) / 0.85;
+  return b < 1 ? -0.14 * Math.abs(Math.sin(b * Math.PI * 2)) * (1 - b) : 0;
+}
 
 /**
  * Who is on the island: the one you hold and the friends out with it first, then
@@ -239,33 +285,11 @@ function pier(): THREE.Object3D {
   return g;
 }
 
-function closetHouse(): THREE.Object3D {
-  const g = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.7, 1.1), mat("#ffc0dc", { roughness: 0.5 }));
-  body.position.y = 0.85;
-  const roof = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 1.2, 32, 1, false, 0, Math.PI), mat("#ff8fbf", { roughness: 0.45 }));
-  roof.rotation.z = Math.PI / 2;
-  roof.rotation.y = Math.PI / 2;
-  roof.position.y = 1.7;
-  const doorMat = mat("#fff2f8", { roughness: 0.5 });
-  for (const s of [-1, 1]) {
-    const door = new THREE.Mesh(new THREE.BoxGeometry(0.62, 1.3, 0.06), doorMat);
-    door.position.set(s * 0.34, 0.8, 0.56);
-    const knob = sphere(0.05, "#ffc94d", { metalness: 0.6, roughness: 0.3 });
-    knob.position.set(s * 0.09, 0.8, 0.6);
-    g.add(door, knob);
-  }
-  // A heart over the doors.
-  const hs = new THREE.Shape();
-  hs.moveTo(0, -0.15);
-  hs.bezierCurveTo(-0.22, 0, -0.16, 0.18, 0, 0.08);
-  hs.bezierCurveTo(0.16, 0.18, 0.22, 0, 0, -0.15);
-  const heart = new THREE.Mesh(new THREE.ExtrudeGeometry(hs, { depth: 0.05, bevelEnabled: false }), mat("#ff4f8d", { roughness: 0.35 }));
-  heart.position.set(0, 1.85, 0.62);
-  heart.scale.setScalar(1.3);
-  g.add(body, roof, heart);
-  return g;
-}
+/** The case sits in the middle a little bigger than the steamer new squishies come in. */
+const CASE_SCALE = 1.05;
+const CASE_Y = 1.12;
+/** How high the squishies leap on their way out of the case. */
+const JUMP_ARC = 1.9;
 
 /** Squishies on the island, a little bigger than the plain buns so you can tell who is who. */
 const SQUISHY_SIZE = 0.4;
@@ -338,9 +362,12 @@ export function buildIsland(date = new Date()): Island {
   scene.add(sand, grass);
   const top = 0.95; // height of the grass near the places
 
-  const house = closetHouse();
-  house.position.y = 1.1;
-  scene.add(house);
+  const box = steamerCase();
+  box.obj.scale.setScalar(CASE_SCALE);
+  box.obj.position.y = CASE_Y;
+  scene.add(box.obj);
+  // Where everyone waits inside, and leaps from.
+  const inside = new THREE.Vector3(0, CASE_Y + box.floor * CASE_SCALE, 0);
 
   const sp = spooky(october);
   const builders = [steamer, () => sp.obj, lollipops, flowers, crystals, clouds, iceCream, pier];
@@ -355,10 +382,10 @@ export function buildIsland(date = new Date()): Island {
   });
 
   const colors = ["#f2a9cf", "#f8c3c6", "#ffffff", "#c9a8f0", "#a9d18e", "#ffc94d", "#ff9a3c", "#7fd6ff", "#d9573f", "#2f63d8"];
-  // Each hopper has its own little loop on the grass, spread round the closet.
+  // Each hopper has its own little loop on the grass, spread round the case.
   const hopper = (obj: THREE.Object3D, i: number, size = 1): MiniBun => {
     const a = (i / ISLAND_MAX) * Math.PI * 2 + 0.3;
-    const r = 2.0 + (i % 3) * 0.6;
+    const r = 2.2 + (i % 3) * 0.5;
     return { obj, size, center: new THREE.Vector2(Math.sin(a) * r, Math.cos(a) * r), radius: 0.35 + (i % 2) * 0.25, speed: (i % 2 ? 1 : -1) * (0.4 + (i % 4) * 0.1), phase: i * 1.3 };
   };
   const plain: MiniBun[] = colors.map((c, i) => {
@@ -407,9 +434,12 @@ export function buildIsland(date = new Date()): Island {
   const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 200);
   // Grass height at a distance from the middle.
   const groundAt = (r: number) => 0.22 + 0.16 * Math.sqrt(Math.max(0, 5.9 * 5.9 - r * r));
-  const party = october ? dressIsland(scene, groundAt) : autumn ? dressIslandAutumn(scene, groundAt) : null;
+  const party = october ? dressIsland(scene, groundAt, box.cap) : autumn ? dressIslandAutumn(scene, groundAt, box.cap) : null;
   let dist = 20;
   const look = new THREE.Vector3(0, 1.1, 0);
+  /** Seconds since everyone was last closed in the case. */
+  let introT = 0;
+  const pose = new THREE.Vector3();
 
   return {
     scene,
@@ -427,20 +457,43 @@ export function buildIsland(date = new Date()): Island {
       // Leave the bottom of the screen for the Play button.
       look.y = 1.1 - dist * 0.08;
       camera.lookAt(look);
-      for (const b of buns) {
+      introT += dt;
+      buns.forEach((b, i) => {
         const ang = b.phase + t * b.speed;
         const hopT = (t * 2.2 + b.phase) % 1;
         const hop = Math.sin(hopT * Math.PI);
-        b.obj.position.set(b.center.x + Math.cos(ang) * b.radius, top - 0.05 + hop * 0.35, b.center.y + Math.sin(ang) * b.radius);
-        b.obj.rotation.y = -ang + (b.speed > 0 ? 0 : Math.PI);
+        pose.set(b.center.x + Math.cos(ang) * b.radius, top - 0.05 + hop * 0.35, b.center.y + Math.sin(ang) * b.radius);
+        const turn = -ang + (b.speed > 0 ? 0 : Math.PI);
         const squash = hopT < 0.08 || hopT > 0.92 ? 0.8 : 1;
-        b.obj.scale.set(b.size / Math.sqrt(squash), b.size * squash, b.size / Math.sqrt(squash));
-      }
+        const k = jumpProgress(i, buns.length, introT);
+        b.obj.visible = k >= 0;
+        if (k < 0) return;
+        if (k >= 1) {
+          b.obj.position.copy(pose);
+          b.obj.rotation.y = turn;
+          b.obj.scale.set(b.size / Math.sqrt(squash), b.size * squash, b.size / Math.sqrt(squash));
+          return;
+        }
+        // Leaping out of the case: up over the rim in an arc, with a twirl, stretched on the way up and squashed
+        // as it comes down, landing just where its hopping picks up.
+        b.obj.position.lerpVectors(inside, pose, k);
+        b.obj.position.y += Math.sin(k * Math.PI) * JUMP_ARC;
+        const away = Math.atan2(pose.x - inside.x, pose.z - inside.z);
+        const settle = THREE.MathUtils.euclideanModulo(turn - away + Math.PI, Math.PI * 2) - Math.PI;
+        b.obj.rotation.y = away + (1 - k) * Math.PI * 2 + settle * k * k;
+        const grow = b.size * (0.7 + 0.3 * Math.min(1, k / 0.35));
+        const stretch = 1 + 0.22 * Math.cos(k * Math.PI) * (1 - k * 0.3);
+        b.obj.scale.set(grow / Math.sqrt(stretch), grow * stretch, grow / Math.sqrt(stretch));
+      });
+      box.hinge.rotation.x = lidAngle(buns.length, introT);
       for (const [i, f] of foams.entries()) f.scale.setScalar(1 + Math.sin(t * 0.9 + i) * 0.015);
       if (star) star.rotation.y = t * 0.8;
       if (october) for (const [i, m] of sp.glow.entries()) m.emissiveIntensity = 0.45 + 0.2 * Math.sin(t * 2 + i);
       party?.(dt, t);
     },
     setSquishies,
+    intro() {
+      introT = 0;
+    },
   };
 }
