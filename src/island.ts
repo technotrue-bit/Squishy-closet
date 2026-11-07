@@ -1,6 +1,7 @@
 // Squishy Island, the title screen: a round pastel island in a calm sea, the
 // Squishy Closet in the middle and eight places around it where squishies
-// live. Little buns hop about while the camera drifts slowly round. Spooky
+// live. Your own squishies hop about, in their hats, while the camera drifts
+// slowly round; before you have any, little plain buns hop there instead. Spooky
 // Hollow lights up in October, and the whole island dresses up for Halloween. The rest of fall it glows golden
 // for cozy autumn.
 
@@ -8,12 +9,42 @@ import * as THREE from "three";
 import { dressIsland, tinyWitchHat } from "./halloween";
 import { dressIslandAutumn } from "./autumn";
 import { dressFor } from "./season";
+import { defById } from "./catalog";
+import { Squishy } from "./squishy";
+import { BOTTOM_Y } from "./bao";
 
 export interface Island {
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
   fit(w: number, h: number): void;
   update(dt: number, t: number): void;
+  /** Who hops about: your squishies, in order, with their hats. None brings back the plain buns. */
+  setSquishies(cast: readonly IslandSquishy[]): void;
+}
+
+export interface IslandSquishy {
+  id: string;
+  hat: string | null;
+}
+
+/** How many squishies hop about the island at most. */
+export const ISLAND_MAX = 10;
+
+/**
+ * Who is on the island: the one you hold and the friends out with it first, then
+ * the newest of the rest, up to ISLAND_MAX.
+ */
+export function islandCast(
+  owned: Readonly<Record<string, { got: number; hat?: string }>>,
+  active: string | null,
+  team: readonly string[],
+  max = ISLAND_MAX,
+): IslandSquishy[] {
+  const out = [active, ...team].filter((id): id is string => !!id && !!owned[id]);
+  const rest = Object.keys(owned)
+    .filter((id) => !out.includes(id))
+    .sort((a, b) => owned[b].got - owned[a].got);
+  return [...new Set([...out, ...rest])].slice(0, max).map((id) => ({ id, hat: owned[id].hat ?? null }));
 }
 
 /** The eight places, starting at the front and going round. */
@@ -236,8 +267,13 @@ function closetHouse(): THREE.Object3D {
   return g;
 }
 
+/** Squishies on the island, a little bigger than the plain buns so you can tell who is who. */
+const SQUISHY_SIZE = 0.4;
+
 interface MiniBun {
   obj: THREE.Object3D;
+  /** Its size standing still; hops squash and stretch from this. */
+  size: number;
   center: THREE.Vector2;
   radius: number;
   speed: number;
@@ -319,13 +355,54 @@ export function buildIsland(date = new Date()): Island {
   });
 
   const colors = ["#f2a9cf", "#f8c3c6", "#ffffff", "#c9a8f0", "#a9d18e", "#ffc94d", "#ff9a3c", "#7fd6ff", "#d9573f", "#2f63d8"];
-  const buns: MiniBun[] = colors.map((c, i) => {
+  // Each hopper has its own little loop on the grass, spread round the closet.
+  const hopper = (obj: THREE.Object3D, i: number, size = 1): MiniBun => {
+    const a = (i / ISLAND_MAX) * Math.PI * 2 + 0.3;
+    const r = 2.0 + (i % 3) * 0.6;
+    return { obj, size, center: new THREE.Vector2(Math.sin(a) * r, Math.cos(a) * r), radius: 0.35 + (i % 2) * 0.25, speed: (i % 2 ? 1 : -1) * (0.4 + (i % 4) * 0.1), phase: i * 1.3 };
+  };
+  const plain: MiniBun[] = colors.map((c, i) => {
     const obj = miniBun(c, october && i % 3 === 0);
     scene.add(obj);
-    const a = (i / colors.length) * Math.PI * 2 + 0.3;
-    const r = 2.0 + (i % 3) * 0.6;
-    return { obj, center: new THREE.Vector2(Math.sin(a) * r, Math.cos(a) * r), radius: 0.35 + (i % 2) * 0.25, speed: (i % 2 ? 1 : -1) * (0.4 + (i % 4) * 0.1), phase: i * 1.3 };
+    return hopper(obj, i);
   });
+  let buns = plain;
+
+  // Your own squishies, built once and dressed again when the cast changes.
+  const pool: { sq: Squishy; holder: THREE.Group }[] = [];
+  let castKey = "";
+  const setSquishies = (cast: readonly IslandSquishy[]) => {
+    const list = cast.filter((c) => defById(c.id)).slice(0, ISLAND_MAX);
+    const key = list.map((c) => `${c.id}+${c.hat ?? ""}`).join(",");
+    if (key === castKey) return;
+    castKey = key;
+    for (const b of plain) b.obj.visible = list.length === 0;
+    buns = list.length ? [] : plain;
+    list.forEach((c, i) => {
+      const def = defById(c.id)!;
+      // At Halloween, some without a hat go trick-or-treating in a witch hat, like the buns.
+      const hat = c.hat ?? (october && i % 3 === 0 ? "witch" : null);
+      let slot = pool[i];
+      if (!slot) {
+        const sq = new Squishy(def, { fx() {}, love() {}, did() {} });
+        sq.autoSleep = false;
+        // Stand it on the holder's floor, so squashing keeps its bottom on the grass.
+        sq.home.set(0, -BOTTOM_Y, 0);
+        const holder = new THREE.Group();
+        holder.add(sq.group);
+        scene.add(holder);
+        slot = pool[i] = { sq, holder };
+      }
+      slot.sq.setDesign(def, hat);
+      // Settle once into its resting shape, facing the way it hops; after that only the holder moves.
+      slot.sq.faceNow(0);
+      slot.sq.placeAt(slot.sq.home);
+      slot.sq.update(1 / 60, 0.4, { minX: -3, maxX: 3, maxY: 6, floorY: 0 });
+      slot.holder.visible = true;
+      buns.push(hopper(slot.holder, i, SQUISHY_SIZE));
+    });
+    for (const slot of pool.slice(list.length)) slot.holder.visible = false;
+  };
 
   const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 200);
   // Grass height at a distance from the middle.
@@ -357,12 +434,13 @@ export function buildIsland(date = new Date()): Island {
         b.obj.position.set(b.center.x + Math.cos(ang) * b.radius, top - 0.05 + hop * 0.35, b.center.y + Math.sin(ang) * b.radius);
         b.obj.rotation.y = -ang + (b.speed > 0 ? 0 : Math.PI);
         const squash = hopT < 0.08 || hopT > 0.92 ? 0.8 : 1;
-        b.obj.scale.set(1 / Math.sqrt(squash), squash, 1 / Math.sqrt(squash));
+        b.obj.scale.set(b.size / Math.sqrt(squash), b.size * squash, b.size / Math.sqrt(squash));
       }
       for (const [i, f] of foams.entries()) f.scale.setScalar(1 + Math.sin(t * 0.9 + i) * 0.015);
       if (star) star.rotation.y = t * 0.8;
       if (october) for (const [i, m] of sp.glow.entries()) m.emissiveIntensity = 0.45 + 0.2 * Math.sin(t * 2 + i);
       party?.(dt, t);
     },
+    setSquishies,
   };
 }

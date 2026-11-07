@@ -12,7 +12,7 @@ import * as THREE from "three";
 import { Gestures, type GestureEvent } from "./gestures";
 import { Squishy, type Bounds } from "./squishy";
 import { buildStage, BASKET_FLOOR, BASKET_WALL, canvasTex, LID_CLOSED, LID_REST } from "./scene";
-import { buildIsland } from "./island";
+import { buildIsland, islandCast } from "./island";
 import { isPoster, posterSave } from "./poster";
 import { Effects } from "./fx";
 import { Ui, type HandMove, type Screen, type ShelfState, type UiHandlers } from "./ui";
@@ -1233,6 +1233,8 @@ function stepShip(dt: number, now: number): void {
 
 function setScreen(s: Screen): void {
   screen = s;
+  // Back on the island: your own squishies hop about it.
+  if (s === "title") island.setSquishies(islandCast(save.owned, save.active, save.team));
   ui.show(s);
   ui.hand(null);
   crew.paused = s !== "closet";
