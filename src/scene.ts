@@ -231,6 +231,16 @@ export function buildStage(renderer?: THREE.WebGLRenderer): Stage {
 
 /** A bamboo steamer basket with its lid leaning on its edge behind it. */
 function steamer(wallMat: THREE.Material, floorMat: THREE.Material, rimMat: THREE.Material): { basket: THREE.Group; lid: THREE.Group } {
+  const basket = steamerTier(wallMat, floorMat, rimMat);
+  const lid = steamerLid(wallMat, floorMat, rimMat);
+  lid.rotation.copy(LID_REST.rot);
+  lid.position.copy(LID_REST.pos);
+  basket.add(lid);
+  return { basket, lid };
+}
+
+/** One open bamboo tier: a woven floor and a slatted wall, 0.3 tall, standing on its origin. */
+function steamerTier(wallMat: THREE.Material, floorMat: THREE.Material, rimMat: THREE.Material): THREE.Group {
   const basket = new THREE.Group();
   const wall = new THREE.Mesh(new THREE.CylinderGeometry(1.17, 1.12, 0.3, 72, 1, true), wallMat);
   wall.position.y = 0.15;
@@ -243,7 +253,11 @@ function steamer(wallMat: THREE.Material, floorMat: THREE.Material, rimMat: THRE
   rimLow.rotation.x = Math.PI / 2;
   rimLow.position.y = 0.05;
   basket.add(wall, floor, rimTop, rimLow);
+  return basket;
+}
 
+/** The steamer's lid, with its handle; its middle is at the origin and its bottom edge 0.1 below. */
+function steamerLid(wallMat: THREE.Material, floorMat: THREE.Material, rimMat: THREE.Material): THREE.Group {
   const lid = new THREE.Group();
   const lidWall = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 0.2, 72, 1, true), wallMat);
   const lidTop = new THREE.Mesh(new THREE.CylinderGeometry(1.18, 1.18, 0.05, 72), floorMat);
@@ -255,8 +269,46 @@ function steamer(wallMat: THREE.Material, floorMat: THREE.Material, rimMat: THRE
   knob.rotation.z = Math.PI / 2;
   knob.position.y = 0.16;
   lid.add(lidWall, lidTop, lidRim, knob);
-  lid.rotation.copy(LID_REST.rot);
-  lid.position.copy(LID_REST.pos);
-  basket.add(lid);
-  return { basket, lid };
+  return lid;
+}
+
+export interface SteamerCase {
+  /** Two stacked tiers and the lid, standing on the origin. */
+  obj: THREE.Group;
+  /** Hinged at the back edge: turn it about x (negative) to flip the lid open. */
+  hinge: THREE.Group;
+  /** The middle of the top of the lid: anything added here sits on the lid and rides along when it opens. */
+  cap: THREE.Group;
+  /** The floor of the top tier, where squishies wait inside. */
+  floor: number;
+}
+
+/** Height of the top tier's bottom: it nests a little into the one below, like real steamers. */
+const TIER_STEP = 0.27;
+
+/**
+ * The squishy case for Squishy Island: the very steamer new squishies come in, two tiers high with its lid on, for
+ * your squishies to jump out of.
+ */
+export function steamerCase(): SteamerCase {
+  const side = bambooSide();
+  const wallMat = new THREE.MeshStandardMaterial({ map: side, roughness: 0.75, side: THREE.DoubleSide });
+  const floorMat = new THREE.MeshStandardMaterial({ map: bambooWeave(), roughness: 0.85 });
+  const rimMat = new THREE.MeshStandardMaterial({ color: "#d39a5c", roughness: 0.6 });
+  const obj = new THREE.Group();
+  const low = steamerTier(wallMat, floorMat, rimMat);
+  const high = steamerTier(wallMat, floorMat, rimMat);
+  high.position.y = TIER_STEP;
+  obj.add(low, high);
+  const top = TIER_STEP + 0.3;
+  const hinge = new THREE.Group();
+  hinge.position.set(0, top, -LID_R);
+  const lid = steamerLid(wallMat, floorMat, rimMat);
+  lid.position.set(0, 0.1, LID_R);
+  const cap = new THREE.Group();
+  cap.position.y = 0.105;
+  lid.add(cap);
+  hinge.add(lid);
+  obj.add(hinge);
+  return { obj, hinge, cap, floor: TIER_STEP + BASKET_FLOOR };
 }

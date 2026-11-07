@@ -1193,14 +1193,14 @@ export function dressPlace(p: PlaceScene): void {
 // ---- the island ------------------------------------------------------------------------
 
 /**
- * Squishy Island at Halloween: a purple dusk, bats round the Closet (which wears a giant witch hat), ghosts drifting
- * round the island and jack-o'-lanterns all along the shore.
+ * Squishy Island at Halloween: a purple dusk, bats round the squishy case (whose lid, `cap`, wears a giant witch hat),
+ * ghosts drifting round the island and jack-o'-lanterns all along the shore.
  */
-export function dressIsland(scene: THREE.Scene, groundAt: (r: number) => number): (dt: number, t: number) => void {
+export function dressIsland(scene: THREE.Scene, groundAt: (r: number) => number, cap: THREE.Object3D): (dt: number, t: number) => void {
   const party = new Party();
   scene.background = duskSky("#241c4a", "#7a4fb0", "#ffb08a", 0.62);
   scene.fog = new THREE.Fog("#9a7ac0", 30, 70);
-  party.bats(V(0, 4.4, 0), 4, 2.4, 1.2, 0.7);
+  party.bats(V(0, 3.9, 0), 4, 2.4, 1.2, 0.7);
   const ghosts: THREE.Group[] = [0, 1, 2].map(() => party.ghostAt(V(0, 0, 0), { scale: 0.7 }));
   party.on((t) => {
     // Round and round the island; each ghost bobs on top of its own float.
@@ -1217,9 +1217,9 @@ export function dressIsland(scene: THREE.Scene, groundAt: (r: number) => number)
     const r = 0.32 + (i % 3) * 0.08;
     party.lantern(Math.sin(a) * 5.3, Math.cos(a) * 5.3, r, (["smile", "grin", "wink", "oh"] as const)[i % 4], { y: groundAt(5.3) - 0.04, yaw: a });
   }
-  const hat = tinyWitchHat(2.2);
-  hat.position.set(0.1, 3.45, 0);
-  scene.add(hat, party.group);
+  // On the lid, so it tips back when the lid pops open.
+  cap.add(tinyWitchHat(2.4));
+  scene.add(party.group);
   return (dt, t) => party.update(dt, t);
 }
 

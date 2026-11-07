@@ -1306,9 +1306,9 @@ export function dressAutumn(p: PlaceScene): void {
 
 /**
  * Squishy Island in autumn: a golden sky, fall trees between the places, pumpkins round the shore, leaves drifting
- * down over everything, and the Closet keeping warm in a big knitted beanie.
+ * down over everything, and the squishy case keeping warm in a big knitted beanie on its lid (`cap`).
  */
-export function dressIslandAutumn(scene: THREE.Scene, groundAt: (r: number) => number): (dt: number, t: number) => void {
+export function dressIslandAutumn(scene: THREE.Scene, groundAt: (r: number) => number, cap: THREE.Object3D): (dt: number, t: number) => void {
   const h = new Harvest((x, z) => groundAt(Math.hypot(x, z)));
   scene.background = duskSky("#eea07e", "#ffd09a", "#fff0d6", 0.6);
   scene.fog = new THREE.Fog("#ffd8b4", 30, 70);
@@ -1325,8 +1325,8 @@ export function dressIslandAutumn(scene: THREE.Scene, groundAt: (r: number) => n
   }
   for (const [a, r] of [[0.9, 2.2], [2.6, 2.4], [4.4, 2.1]] as const) h.pile(Math.sin(a) * r, Math.cos(a) * r, 0.38);
   h.leaves({ x0: -6.5, x1: 6.5, y0: 0.5, y1: 7, z0: -6.5, z1: 6.5 }, 50, 1.8);
-  const hat = tinyBeanie(1.55, "#e2532d");
-  hat.position.set(0.1, 3.05, 0);
-  scene.add(hat, h.group);
+  // Snug over the lid, so it pops open with it.
+  cap.add(tinyBeanie(2.05, "#e2532d"));
+  scene.add(h.group);
   return (dt, t) => h.update(dt, t);
 }
