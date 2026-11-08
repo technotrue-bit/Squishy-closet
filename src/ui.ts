@@ -6,7 +6,7 @@
 
 import { CATALOG, FAMILIES, FINISH_NAME, type SquishyDef } from "./catalog";
 import { feelWord } from "./feel";
-import { HATS, type HatDef } from "./hats";
+import { HATS, hatById, type HatDef } from "./hats";
 import { PLACES, type PlaceId } from "./places";
 import { LOVE_PER_BOX, NAME_MAX, ZOOM_MAX, ZOOM_MIN } from "./save";
 import { LESSONS, moodById, type Mood, type MoodId } from "./personality";
@@ -16,6 +16,7 @@ import type { Thumbs } from "./thumbs";
 import { FREE_PLACES, inFreeGame, placeOpen, squishyOpen, type FullWhy } from "./unlock";
 import type { BuyResult } from "./payments";
 import type { Dress } from "./season";
+import { membersOf, type SetProgress } from "./sets";
 import qrcode from "qrcode-generator";
 
 const CSS = `
@@ -247,6 +248,19 @@ const CSS = `
 .ui .book .cell.wobble { animation: wiggle 0.5s; }
 .ui .book .cell .lock { position: absolute; right: 6px; top: 3px; font-size: 12px; z-index: 1; }
 .ui .book .pad { height: calc(env(safe-area-inset-bottom) + 30px); }
+/* Collection goals: a row of sets under each family, each with its hat, how many are found and a bar. */
+.ui .book .sets { display: flex; gap: 8px; padding: 0 12px 10px; overflow-x: auto; -webkit-overflow-scrolling: touch; touch-action: pan-x pan-y; }
+.ui .book .set { flex: none; width: 118px; padding: 6px 8px 8px; border-radius: 18px; background: #fff; box-shadow: 0 3px 0 #e6d0f2; text-align: center; position: relative; }
+.ui .book .set img { width: 54px; height: 54px; display: block; margin: 0 auto; }
+.ui .book .set b { display: block; font-size: 14px; font-weight: 900; color: #7350b8; line-height: 1.1; min-height: 2.2em; display: grid; place-items: center; }
+.ui .book .set .bar { height: 10px; border-radius: 5px; background: #efe4f6; overflow: hidden; margin-top: 4px; }
+.ui .book .set .bar i { display: block; height: 100%; border-radius: 5px; background: linear-gradient(90deg, #ffb3d1, #ff5f9c); }
+.ui .book .set small { display: block; margin-top: 3px; font-size: 13px; font-weight: 900; color: #c58ab0; }
+.ui .book .set.done { background: linear-gradient(180deg, #fff8dc, #ffeaa8); box-shadow: 0 3px 0 #e8c25a; }
+.ui .book .set.done .bar i { background: linear-gradient(90deg, #ffd84d, #f2a900); }
+.ui .book .set.done small { color: #b07a00; }
+.ui .book .set.locked img { filter: grayscale(0.6) opacity(0.7); }
+.ui .book .set.wobble { animation: wiggle 0.5s; }
 
 .ui .sheet { position: absolute; inset: 0; z-index: 3; display: none; pointer-events: auto; background: rgba(90,40,80,0.35); align-items: flex-end; justify-content: center; }
 .ui .sheet.on { display: flex; }
@@ -498,6 +512,7 @@ const HAT_FROM: Record<HatDef["from"], string> = {
   box: "It came in the box!",
   spooky: "It came in the Spooky Box!",
   bath: "For bath time!",
+  set: "For finishing a set in the Book!",
 };
 
 /** A few words under each care tile. */
@@ -725,6 +740,31 @@ export class Ui {
     return new Promise((resolve) => {
       this.cardDone = () => resolve();
       this.modal.querySelector(".ok")!.addEventListener("click", () => this.closeCard());
+    });
+  }
+
+  /** A set in the Book is finished: its hat and a few stars. Resolves true to put the hat on now. */
+  setCard(name: string, hat: string, hatName: string, stars: number, cookies: number): Promise<boolean> {
+    this.modal.innerHTML = `
+      <div class="card">
+        <div class="new">Set done!</div>
+        <img alt="">
+        <div class="kind" style="font-size:20px;color:#e2508c">You finished ${esc(name)}!</div>
+        <div class="note">Here's the <b>${esc(hatName)}</b>, just for you.</div>
+        <div class="loot">${cookies ? `<span>🍪 +${cookies}</span>` : ""}<span>⭐ +${stars}</span></div>
+        <div class="btns"><button class="big alt later">Later</button><button class="big wear">Wear it!</button></div>
+      </div>`;
+    this.thumbs.wantHat(hat, (url) => (this.modal.querySelector("img")!.src = url));
+    this.modal.classList.add("on");
+    this.coverChanged();
+    return new Promise((resolve) => {
+      let wear = false;
+      this.cardDone = () => resolve(wear);
+      this.modal.querySelector(".later")!.addEventListener("click", () => this.closeCard());
+      this.modal.querySelector(".wear")!.addEventListener("click", () => {
+        wear = true;
+        this.closeCard();
+      });
     });
   }
 
@@ -988,7 +1028,7 @@ export class Ui {
           b.classList.add("wobble");
           const h = HATS.find((x) => x.id === id)!;
           this.toast(
-            h.from === "box" ? "Find it in a box!" : h.from === "spooky" ? "Find it in a Spooky Box on Halloween! 🎃" : h.from === "bath" ? "Give a squishy a bath!" : "Friends find it doing jobs!",
+            h.from === "box" ? "Find it in a box!" : h.from === "spooky" ? "Find it in a Spooky Box on Halloween! 🎃" : h.from === "bath" ? "Give a squishy a bath!" : h.from === "set" ? "Finish a set in the Squishy Book!" : "Friends find it doing jobs!",
             1700,
           );
           return;
@@ -1788,7 +1828,7 @@ export class Ui {
   }
 
   /** The Squishy Book: every squishy, with shadows for ones not found yet. */
-  book(owned: Record<string, { mood?: MoodId }>, nameOf: (id: string) => string): void {
+  book(owned: Record<string, { mood?: MoodId }>, nameOf: (id: string) => string, sets: SetProgress[] = []): void {
     const found = CATALOG.filter((d) => owned[d.id]).length;
     const full = this.h.full().has;
     // The way out sits in the sticky header, so it is there however far down you scroll.
@@ -1804,6 +1844,16 @@ export class Ui {
       const got = defs.filter((d) => owned[d.id]).length;
       html += `<h2>${esc(fam.name)} <span>${got}/${defs.length}</span></h2>`;
       if (fam.id === "halloween") html += `<div class="note">🎃 Only in Spooky Boxes, which come on Halloween!</div>`;
+      const famSets = sets.filter((p) => p.set.family === fam.id);
+      if (famSets.length) {
+        html += `<div class="sets">`;
+        for (const p of famSets) {
+          const locked = !p.done && !p.open;
+          const said = p.done ? "✓ Done!" : locked ? `✨ ${p.got}/${p.total}` : `${p.got}/${p.total}`;
+          html += `<button class="set${p.done ? " done" : ""}${locked ? " locked" : ""}" data-set="${p.set.id}"><img alt=""><b>${esc(p.set.name)}</b><div class="bar"><i style="width:${Math.round((100 * p.got) / p.total)}%"></i></div><small>${said}</small></button>`;
+        }
+        html += `</div>`;
+      }
       html += `<div class="grid">`;
       for (const d of defs) {
         const locked = !owned[d.id] && !squishyOpen(d, full);
@@ -1824,6 +1874,30 @@ export class Ui {
       this.h.openMail();
     });
     this.bookEl.querySelector(".mpaste")!.addEventListener("click", () => this.pasteSheet());
+    for (const b of this.bookEl.querySelectorAll<HTMLButtonElement>(".set")) {
+      const p = sets.find((x) => x.set.id === b.dataset.set);
+      if (!p) continue;
+      const hat = hatById(p.set.hat);
+      const img = b.querySelector("img")!;
+      this.thumbs.wantHat(p.set.hat, (url) => (img.src = url));
+      b.addEventListener("click", () => {
+        b.classList.remove("wobble");
+        void b.offsetWidth;
+        b.classList.add("wobble");
+        const left = p.total - p.got;
+        if (p.done) this.toast(`You finished ${p.set.name}! The ${hat?.name ?? "hat"} is yours 🎉`, 2200);
+        else if (!p.open) this.toast(`${p.set.name} is in the full game ✨`, 1800);
+        else this.toast(`Find ${left} more to win the ${hat?.name ?? "hat"}!${p.set.note ? ` ${p.set.note}.` : ""}`, 2200);
+        // The ones still to find in this set wobble, to show where they are.
+        const missing = new Set(membersOf(p.set).map((d) => d.id).filter((id) => !owned[id]));
+        for (const cell of this.bookEl.querySelectorAll<HTMLButtonElement>(".cell")) {
+          if (!missing.has(cell.dataset.id!)) continue;
+          cell.classList.remove("wobble");
+          void cell.offsetWidth;
+          cell.classList.add("wobble");
+        }
+      });
+    }
     for (const cell of this.bookEl.querySelectorAll<HTMLButtonElement>(".cell")) {
       const id = cell.dataset.id!;
       const img = cell.querySelector("img")!;

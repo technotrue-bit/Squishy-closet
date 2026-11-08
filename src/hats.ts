@@ -1,9 +1,10 @@
 // Every hat in the game. The first one is a gift; each place gives three for
 // jobs done there, and some turn up in Squishy Boxes. Spooky Boxes always bring
 // a spooky hat you don't have yet, and the first bath brings a shower cap. The
-// 3D hats are built in hatModels.ts; this file is only the facts.
+// 3D hats are built in hatModels.ts; this file is only the facts. Finishing a set in
+// the Squishy Book brings that set's own hat.
 
-export type HatFrom = "gift" | "place" | "box" | "spooky" | "bath";
+export type HatFrom = "gift" | "place" | "box" | "spooky" | "bath" | "set";
 
 export interface HatDef {
   id: string;
@@ -38,6 +39,14 @@ export const HATS: HatDef[] = [
   { id: "batBow", name: "Bat Bow", from: "spooky", spooky: true },
   { id: "candyCorn", name: "Candy Corn Hat", from: "spooky", spooky: true },
   { id: "showerCap", name: "Shower Cap", from: "bath" },
+  // One for each set finished in the Squishy Book (sets.ts).
+  { id: "steamer", name: "Little Steamer", from: "set" },
+  { id: "starClip", name: "Star Clip", from: "set" },
+  { id: "tiara", name: "Sparkle Tiara", from: "set" },
+  { id: "laurel", name: "Golden Laurel", from: "set" },
+  { id: "ghostPal", name: "Ghost Pal", from: "set" },
+  { id: "halo", name: "Glow Halo", from: "set" },
+  { id: "moonBand", name: "Moon Band", from: "set" },
 ];
 
 const BY_ID = new Map(HATS.map((h) => [h.id, h]));

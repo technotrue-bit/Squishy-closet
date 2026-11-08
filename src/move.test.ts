@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import qrcode from "qrcode-generator";
 import { CATALOG } from "./catalog";
 import { HATS } from "./hats";
+import { SETS } from "./sets";
 import { newBaby } from "./babies";
 import { freshSave, parseSave, type Save } from "./save";
 import { combineSaves, decodeSave, encodeSave, findCode, moveLink } from "./move";
@@ -11,6 +12,7 @@ function fullSave(): Save {
   const s = freshSave();
   CATALOG.forEach((d, i) => (s.owned[d.id] = { got: 1_760_000_000_000 + i * 86_400_000, mood: "bouncy", name: `Squishy ${i}`, hat: HATS[i % HATS.length].id }));
   s.hats = HATS.map((h) => h.id);
+  s.sets = SETS.map((x) => x.id);
   s.active = CATALOG[0].id;
   s.team = CATALOG.slice(1, 4).map((d) => d.id);
   s.babies = [0, 1, 2].map((i) => ({ ...newBaby(CATALOG[i].id, 1_760_000_000_000 + i), name: `Baby ${i}` }));

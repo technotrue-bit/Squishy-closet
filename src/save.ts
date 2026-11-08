@@ -9,9 +9,10 @@ import { BABIES_MAX, cleanBaby, COOKIES_MAX, growLeft, moodOf, type Baby } from 
 import { cleanGift, INBOX_MAX, type Gift } from "./gift";
 import { isHalloween } from "./season";
 import { cleanCare, freshCare, type Care } from "./care";
+import { isSetId } from "./sets";
 
 export const SAVE_KEY = "squishycloset.save";
-export const SAVE_VERSION = 6;
+export const SAVE_VERSION = 7;
 /** Squishies out at once: the one you hold and up to three friends. */
 export const TEAM_MAX = 3;
 export const ZOOM_MIN = 0.85;
@@ -82,6 +83,8 @@ export interface Save {
   care: Care;
   /** The shelf and buttons are slid down out of the way, for more room to play. */
   trayDown: boolean;
+  /** Sets in the Squishy Book that were finished and gave their present (sets.ts). */
+  sets: string[];
 }
 
 export const freshSave = (): Save => ({
@@ -110,6 +113,7 @@ export const freshSave = (): Save => ({
   baths: 0,
   care: freshCare(),
   trayDown: false,
+  sets: [],
 });
 
 const strings = (a: unknown): string[] => (Array.isArray(a) ? a.filter((t): t is string => typeof t === "string") : []);
@@ -180,6 +184,7 @@ export function parseSave(raw: string | null, now = Date.now()): Save {
   out.baths = count(s.baths);
   out.care = cleanCare(s.care);
   out.trayDown = s.trayDown === true;
+  out.sets = [...new Set(strings(s.sets).filter(isSetId))];
   if (s.v === 2) {
     // New in this update: friends play together, so bring the newest ones out.
     out.team = Object.keys(out.owned)
