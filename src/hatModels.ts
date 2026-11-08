@@ -679,6 +679,194 @@ function showerCap(): HatModel {
   return { obj: g, animate: (t, c) => puff.scale.set(1 + Math.sin(t * 2.4) * 0.015, 0.72 + Math.sin(t * 2.4 + 1) * 0.02 + c.energy * 0.04, 1) };
 }
 
+
+// ---- set hats: one for each set finished in the Squishy Book --------------
+
+/** A star shape, flat, standing up and facing +Z. */
+function starShape(outer: number, inner: number): THREE.Shape {
+  const sh = new THREE.Shape();
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * Math.PI * 2;
+    const r = i % 2 ? inner : outer;
+    if (i === 0) sh.moveTo(Math.sin(a) * r, Math.cos(a) * r);
+    else sh.lineTo(Math.sin(a) * r, Math.cos(a) * r);
+  }
+  sh.closePath();
+  return sh;
+}
+
+const starGeo = (outer: number, inner: number, depth: number) =>
+  new THREE.ExtrudeGeometry(starShape(outer, inner), { depth, bevelEnabled: true, bevelSize: depth * 0.6, bevelThickness: depth * 0.6, bevelSegments: 3 }).translate(0, 0, -depth / 2);
+
+/** Bao Basics: a little bamboo steamer, its lid lifting a crack with a puff of steam. */
+function steamer(): HatModel {
+  const g = new THREE.Group();
+  const bamboo = mat("#e6c27a", { roughness: 0.7, clearcoat: 0.15 });
+  const band = mat("#c9974a", { roughness: 0.6 });
+  g.add(mesh(new THREE.CylinderGeometry(0.27, 0.27, 0.13, 36), bamboo, 0, 0.065, 0));
+  for (const y of [0.02, 0.11]) g.add(mesh(new THREE.TorusGeometry(0.272, 0.014, 8, 40).rotateX(Math.PI / 2), band, 0, y, 0));
+  const lid = new THREE.Group();
+  const dome = mesh(new THREE.SphereGeometry(0.28, 32, 12, 0, Math.PI * 2, 0, Math.PI / 2), bamboo);
+  dome.scale.set(1, 0.32, 1);
+  lid.add(dome);
+  lid.add(mesh(new THREE.TorusGeometry(0.06, 0.016, 8, 20).rotateX(Math.PI / 2), band, 0, 0.09, 0));
+  lid.position.y = 0.13;
+  g.add(lid);
+  const puffs: THREE.Mesh[] = [];
+  const steam = mat("#ffffff", { roughness: 1, clearcoat: 0, transparent: true, opacity: 0.7 });
+  for (let i = 0; i < 3; i++) {
+    const p = mesh(new THREE.SphereGeometry(0.05, 12, 10), steam.clone(), 0.18 - i * 0.05, 0.16, 0.1);
+    puffs.push(p);
+    g.add(p);
+  }
+  g.rotation.z = 0.08;
+  return {
+    obj: g,
+    animate: (t, c) => {
+      lid.position.y = 0.13 + Math.max(0, Math.sin(t * 2.2)) ** 6 * 0.04 + c.energy * 0.02;
+      puffs.forEach((p, i) => {
+        const k = (t * 0.45 + i / 3) % 1;
+        p.position.set(0.2 + Math.sin(t + i) * 0.03, 0.15 + k * 0.32, 0.08);
+        p.scale.setScalar(0.6 + k * 0.9);
+        (p.material as THREE.MeshPhysicalMaterial).opacity = 0.7 * (1 - k);
+      });
+    },
+  };
+}
+
+/** Shiny Bao: a glossy star hair clip, worn to one side, that twinkles. */
+function starClip(): HatModel {
+  const g = new THREE.Group();
+  const star = mesh(starGeo(0.1, 0.045, 0.03), mat("#ffd84d", { roughness: 0.15, clearcoat: 1, emissive: new THREE.Color("#ffb800"), emissiveIntensity: 0.15 }), 0, 0.14, 0.02);
+  g.add(star);
+  g.add(mesh(new THREE.BoxGeometry(0.15, 0.03, 0.05), mat("#ff8fbf", { roughness: 0.3, clearcoat: 0.8 }), 0, 0.015, 0));
+  star.position.y = 0.1;
+  g.rotation.z = -0.3;
+  return {
+    obj: g,
+    animate: (t, c) => {
+      star.rotation.z = Math.sin(t * 1.6) * 0.12 + c.energy * Math.sin(t * 12) * 0.2;
+      (star.material as THREE.MeshPhysicalMaterial).emissiveIntensity = 0.15 + 0.6 * Math.max(0, Math.sin(t * 2.5)) ** 8;
+    },
+  };
+}
+
+/** Glitter Bao: a little silver tiara with a pink heart gem in the middle and twinkling stones. */
+function tiara(): HatModel {
+  const g = new THREE.Group();
+  const silver = mat("#e8ecf6", { metalness: 0.9, roughness: 0.2, clearcoat: 1 });
+  const arc = new THREE.TorusGeometry(0.26, 0.018, 8, 40, Math.PI).rotateX(Math.PI / 2);
+  g.add(mesh(arc, silver, 0, 0.02, 0));
+  const gems: THREE.MeshPhysicalMaterial[] = [];
+  const cols = ["#9fdcff", "#c48cff", "#ff6fa8", "#c48cff", "#9fdcff"];
+  for (let i = 0; i < 5; i++) {
+    const a = -Math.PI / 2 + ((i + 0.5) / 5) * Math.PI;
+    const h = i === 2 ? 0.17 : i % 2 ? 0.12 : 0.08;
+    const x = Math.sin(a) * 0.26;
+    const z = Math.cos(a) * 0.26;
+    g.add(mesh(new THREE.ConeGeometry(0.035, h, 10), silver, x, 0.02 + h / 2, z));
+    const gm = mat(cols[i], { roughness: 0.05, clearcoat: 1, emissive: new THREE.Color(cols[i]), emissiveIntensity: 0.3 });
+    gems.push(gm);
+    const gem = mesh(i === 2 ? new THREE.OctahedronGeometry(0.05) : new THREE.SphereGeometry(0.03, 12, 10), gm, x * 1.02, 0.04 + h, z * 1.02);
+    g.add(gem);
+  }
+  return { obj: g, animate: (t) => gems.forEach((m, i) => (m.emissiveIntensity = 0.3 + 0.7 * Math.max(0, Math.sin(t * 3.4 + i * 1.7)) ** 6)) };
+}
+
+/** Golden Trio: a golden leaf wreath, like a champion's. */
+function laurel(): HatModel {
+  const g = new THREE.Group();
+  const gold = mat("#f2c14e", { metalness: 0.85, roughness: 0.25, clearcoat: 1 });
+  g.add(mesh(new THREE.TorusGeometry(0.26, 0.016, 8, 40).rotateX(Math.PI / 2), gold, 0, 0.04, 0));
+  const leaf = new THREE.SphereGeometry(0.05, 12, 8).scale(0.55, 1, 0.25);
+  const leaves: THREE.Mesh[] = [];
+  for (let i = 0; i < 18; i++) {
+    const a = (i / 18) * Math.PI * 2;
+    // A gap at the back, where the two branches meet.
+    if (Math.abs(Math.cos(a) + 1) < 0.08) continue;
+    for (const up of [-1, 1]) {
+      const l = mesh(leaf, gold, Math.sin(a) * 0.265, 0.04 + up * 0.035, Math.cos(a) * 0.265);
+      l.rotation.y = a;
+      l.rotation.z = up * 0.7;
+      leaves.push(l);
+      g.add(l);
+    }
+  }
+  return { obj: g, animate: (t, c) => leaves.forEach((l, i) => (l.rotation.x = Math.sin(t * 2 + i * 0.6) * (0.06 + c.energy * 0.2))) };
+}
+
+/** Spooky Friends: a tiny friendly ghost who sits on top and peeks about. */
+function ghostPal(): HatModel {
+  const g = new THREE.Group();
+  const ghost = new THREE.Group();
+  const white = mat("#fbfbff", { roughness: 0.4, clearcoat: 0.5 });
+  const body = mesh(new THREE.SphereGeometry(0.13, 24, 16), white, 0, 0.15, 0);
+  body.scale.set(1, 1.15, 1);
+  ghost.add(body);
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2;
+    ghost.add(mesh(new THREE.SphereGeometry(0.045, 12, 10), white, Math.sin(a) * 0.1, 0.03, Math.cos(a) * 0.1));
+  }
+  const ink = mat("#2a1a24", { roughness: 0.3, clearcoat: 1 });
+  for (const sx of [-1, 1]) ghost.add(mesh(new THREE.SphereGeometry(0.018, 10, 8), ink, sx * 0.045, 0.19, 0.12));
+  const mouth = mesh(new THREE.SphereGeometry(0.02, 10, 8), mat("#ff8fb0"), 0, 0.14, 0.125);
+  mouth.scale.set(1, 1.3, 0.5);
+  ghost.add(mouth);
+  for (const sx of [-1, 1]) ghost.add(mesh(new THREE.SphereGeometry(0.02, 10, 8), mat("#ffb3c7", { roughness: 0.6 }), sx * 0.08, 0.15, 0.1));
+  g.add(ghost);
+  return {
+    obj: g,
+    animate: (t, c) => {
+      ghost.position.y = 0.02 + Math.sin(t * 2.4) * 0.02 + c.energy * 0.04;
+      ghost.rotation.y = Math.sin(t * 0.7) * 0.6;
+      ghost.rotation.z = Math.sin(t * 1.9) * 0.08;
+    },
+  };
+}
+
+/** Glow Spooky: a softly glowing halo that floats over the head. */
+function halo(): HatModel {
+  const g = new THREE.Group();
+  const glow = mat("#fff3b0", { roughness: 0.2, clearcoat: 1, emissive: new THREE.Color("#ffe27a"), emissiveIntensity: 0.9 });
+  const ring = mesh(new THREE.TorusGeometry(0.2, 0.03, 12, 48).rotateX(Math.PI / 2), glow, 0, 0.14, 0);
+  g.add(ring);
+  return {
+    obj: g,
+    animate: (t, c) => {
+      ring.position.y = 0.14 + Math.sin(t * 1.8) * 0.025 + c.energy * 0.05;
+      ring.rotation.x = Math.sin(t * 1.3) * 0.08;
+      ring.rotation.z = Math.cos(t * 1.1) * 0.08;
+      glow.emissiveIntensity = 0.7 + Math.sin(t * 2.6) * 0.25;
+    },
+  };
+}
+
+/** Halloween Specials: a headband with a sleepy crescent moon and a little star. */
+function moonBand(): HatModel {
+  const g = new THREE.Group();
+  g.add(mesh(new THREE.TorusGeometry(0.26, 0.02, 8, 40, Math.PI).rotateX(Math.PI / 2), mat("#6b5a8e", { roughness: 0.5 }), 0, 0.02, 0));
+  const moonShape = new THREE.Shape();
+  moonShape.absarc(0, 0, 0.13, 0, Math.PI * 2, false);
+  const bite = new THREE.Path();
+  bite.absarc(0.06, 0.03, 0.11, 0, Math.PI * 2, true);
+  moonShape.holes.push(bite);
+  const moonGeo = new THREE.ExtrudeGeometry(moonShape, { depth: 0.04, bevelEnabled: true, bevelSize: 0.012, bevelThickness: 0.012, bevelSegments: 3, curveSegments: 32 }).translate(0, 0, -0.02);
+  const moonMat = mat("#ffe27a", { roughness: 0.3, clearcoat: 0.8, emissive: new THREE.Color("#ffd23f"), emissiveIntensity: 0.25 });
+  const moon = mesh(moonGeo, moonMat, -0.03, 0.17, 0.03);
+  moon.rotation.z = 0.5;
+  g.add(moon);
+  const star = mesh(starGeo(0.05, 0.022, 0.02), mat("#fff6c9", { roughness: 0.2, clearcoat: 1, emissive: new THREE.Color("#fff0a0"), emissiveIntensity: 0.4 }), 0.12, 0.22, 0.03);
+  g.add(star);
+  return {
+    obj: g,
+    animate: (t, c) => {
+      moon.rotation.z = 0.5 + Math.sin(t * 1.2) * 0.1 + c.energy * Math.sin(t * 10) * 0.15;
+      star.rotation.z = t * 0.8;
+      moonMat.emissiveIntensity = 0.25 + 0.2 * Math.sin(t * 2);
+    },
+  };
+}
+
 const BUILDERS: Record<string, () => HatModel> = {
   party,
   bow,
@@ -704,6 +892,13 @@ const BUILDERS: Record<string, () => HatModel> = {
   batBow,
   candyCorn,
   showerCap,
+  steamer,
+  starClip,
+  tiara,
+  laurel,
+  ghostPal,
+  halo,
+  moonBand,
 };
 
 export function buildHat(id: string): HatModel | null {
@@ -749,6 +944,13 @@ const FITS: Record<string, HatFit> = {
   batBow: { fit: 0.25, r: 0.46 },
   candyCorn: { fit: 0.2, r: 0.38 },
   showerCap: { fit: 0.32, r: 0.62 },
+  steamer: { fit: 0.27, r: 0.5 },
+  starClip: { fit: 0.08, r: 0.22 },
+  tiara: { fit: 0.26, r: 0.52 },
+  laurel: { fit: 0.27, r: 0.54 },
+  ghostPal: { fit: 0.12, r: 0.22 },
+  halo: { fit: 0.2, r: 0.4 },
+  moonBand: { fit: 0.26, r: 0.52 },
 };
 
 export const hatFit = (id: string): HatFit => FITS[id] ?? { fit: 0.26, r: 0.5 };

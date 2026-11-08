@@ -52,6 +52,7 @@ import { fitCamera, flyBounds, swayCamera, groundView } from "./view";
 import { placeScene } from "./placeScenes";
 import { hatsEarned, placeById, type PlaceId } from "./places";
 import { boxHat, hatById, spookyHat } from "./hats";
+import { claimSet, progressOf, SETS, setsToReward, type SetPresent } from "./sets";
 import { Crew } from "./friends";
 import { Visitors } from "./visitors";
 import { Nursery } from "./nursery";
@@ -115,9 +116,12 @@ let trayGoal = trayK;
 /** The slide's own clock, 0 to 1, before easing. */
 let trayT = trayK;
 let keepAsked = false;
+/** Set once the game is up, so finished sets in the Book are checked on every save from then on. */
+let setsReady = false;
 const persist = () => {
   if (poster) return;
   storeSave(save);
+  if (setsReady) checkSets();
   // Once there is something to lose, ask the browser to keep it.
   if (!keepAsked && Object.keys(save.owned).length) {
     keepAsked = true;
@@ -600,6 +604,39 @@ function showNewHat(id: string): void {
     if (wear) wearHat(id);
   });
 }
+
+// ---- collection goals (sets in the Squishy Book) ---------------------------
+
+/** Gives the present of every set just finished (one squishy can finish a set from any box, baby or mail). */
+function checkSets(): void {
+  const due = setsToReward(save);
+  if (!due.length) return;
+  for (const set of due) {
+    const got = claimSet(save, set);
+    if (got) showSetDone(got);
+  }
+  storeSave(save);
+  ui.setStars(save.stars);
+  ui.setCookies(save.cookies, true);
+}
+
+function showSetDone(p: SetPresent): void {
+  const hat = hatById(p.set.hat);
+  if (!hat) return;
+  if (p.newHat) ui.newHat(true);
+  hatQueue = hatQueue.then(async () => {
+    while (screen !== "closet" || ui.busy) await new Promise((r) => setTimeout(r, 400));
+    sfx.chime(true);
+    fx.emit("sparkle", squishy.topPoint(), 14);
+    const wear = await ui.setCard(p.set.name, p.set.hat, hat.name, p.stars, p.cookies);
+    if (wear) wearHat(p.set.hat);
+  });
+}
+
+const setProgress = () => {
+  const full = hasFull(save.owned);
+  return SETS.map((set) => progressOf(set, save.owned, save.sets, (d) => squishyOpen(d, full)));
+};
 
 function wearHat(id: string | null): void {
   const active = save.active;
@@ -1310,7 +1347,7 @@ const ui = new Ui(
     openBook: () => {
       sfx.unlockAudio();
       sfx.pop();
-      ui.book(save.owned, (id) => nameOf(save, id));
+      ui.book(save.owned, (id) => nameOf(save, id), setProgress());
     },
     goIsland: () => {
       sfx.pop();
@@ -2072,6 +2109,9 @@ if (save.tutorial === "done" && addHat(save, "party")) {
   ui.newHat(true);
   persist();
 }
+// From here on every save checks the sets in the Book. Players who finished one before sets came get its present now.
+setsReady = true;
+checkSets();
 goPlace(save.place, true);
 syncTeam();
 syncBabies();

@@ -140,6 +140,7 @@ export function combineSaves(mine: Save, other: Save): { save: Save; added: numb
   s.spookyYear = Math.max(s.spookyYear, other.spookyYear);
   s.baths = Math.max(s.baths, other.baths);
   s.care = combineCare(s.care, other.care);
+  s.sets = union(s.sets, other.sets);
   for (const [place, n] of Object.entries(other.jobs)) s.jobs[place] = Math.max(s.jobs[place] ?? 0, n);
   for (const g of other.inbox) if (!s.inbox.some((x) => x.key === g.key)) s.inbox.push({ ...g });
   s.giftsGot = union(s.giftsGot, other.giftsGot);
