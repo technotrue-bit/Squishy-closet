@@ -755,7 +755,7 @@ function starClip(): HatModel {
 function tiara(): HatModel {
   const g = new THREE.Group();
   const silver = mat("#e8ecf6", { metalness: 0.9, roughness: 0.2, clearcoat: 1 });
-  const arc = new THREE.TorusGeometry(0.26, 0.018, 8, 40, Math.PI).rotateX(Math.PI / 2).rotateY(Math.PI);
+  const arc = new THREE.TorusGeometry(0.26, 0.018, 8, 40, Math.PI).rotateX(Math.PI / 2);
   g.add(mesh(arc, silver, 0, 0.02, 0));
   const gems: THREE.MeshPhysicalMaterial[] = [];
   const cols = ["#9fdcff", "#c48cff", "#ff6fa8", "#c48cff", "#9fdcff"];
@@ -844,7 +844,7 @@ function halo(): HatModel {
 /** Halloween Specials: a headband with a sleepy crescent moon and a little star. */
 function moonBand(): HatModel {
   const g = new THREE.Group();
-  g.add(mesh(new THREE.TorusGeometry(0.26, 0.02, 8, 40, Math.PI).rotateX(Math.PI / 2).rotateY(Math.PI), mat("#6b5a8e", { roughness: 0.5 }), 0, 0.02, 0));
+  g.add(mesh(new THREE.TorusGeometry(0.26, 0.02, 8, 40, Math.PI).rotateX(Math.PI / 2), mat("#6b5a8e", { roughness: 0.5 }), 0, 0.02, 0));
   const moonShape = new THREE.Shape();
   moonShape.absarc(0, 0, 0.13, 0, Math.PI * 2, false);
   const bite = new THREE.Path();
