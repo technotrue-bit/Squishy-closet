@@ -5,7 +5,6 @@
 // finished with a squishy from a friend counts, and its present stays even if the rules change later.
 
 import { CATALOG, type Family, type Finish, type SquishyDef } from "./catalog";
-import { inFreeGame } from "./unlock";
 import type { Save } from "./save";
 import { hatById } from "./hats";
 import { COOKIES_MAX } from "./babies";
@@ -52,10 +51,14 @@ export interface SetProgress {
   open: boolean;
 }
 
-export function progressOf(set: SetDef, owned: Readonly<Record<string, unknown>>, rewarded: readonly string[], full: boolean): SetProgress {
+/**
+ * How far along a set is. `inGame` says which squishies can turn up in this phone's game (unlock.ts's squishyOpen);
+ * it is passed in so this file stays free of the unlock and the app's storage, which import the save themselves.
+ */
+export function progressOf(set: SetDef, owned: Readonly<Record<string, unknown>>, rewarded: readonly string[], inGame: (d: SquishyDef) => boolean): SetProgress {
   const members = membersOf(set);
   const got = members.filter((d) => owned[d.id]).length;
-  return { set, got, total: members.length, done: rewarded.includes(set.id), open: full || members.every(inFreeGame) };
+  return { set, got, total: members.length, done: rewarded.includes(set.id), open: members.every(inGame) };
 }
 
 /** Sets that are all found but haven't given their present yet. */

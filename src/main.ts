@@ -635,7 +635,7 @@ function showSetDone(p: SetPresent): void {
 
 const setProgress = () => {
   const full = hasFull(save.owned);
-  return SETS.map((set) => progressOf(set, save.owned, save.sets, full));
+  return SETS.map((set) => progressOf(set, save.owned, save.sets, (d) => squishyOpen(d, full)));
 };
 
 function wearHat(id: string | null): void {
