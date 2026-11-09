@@ -58,6 +58,7 @@ import { Visitors } from "./visitors";
 import { Nursery } from "./nursery";
 import { moodById, randomMood, type MoodId } from "./personality";
 import { combineSaves, decodeSave, encodeSave, findCode, HASH, keepStorage, moveLink } from "./move";
+import type { ModelTest } from "./modelTest";
 import { decodeGift, encodeGift, findGift, makeGift, openGift, receiveGift, sentGift, type Gift } from "./gift";
 import {
   BABIES_MAX,
@@ -108,6 +109,14 @@ const fx = new Effects();
 stage.scene.add(fx.group);
 const thumbs = new Thumbs();
 const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 60);
+// The phone test for AI-made models: only with ?modeltest in the address, and
+// only then is its code downloaded, so the normal game stays as light as before.
+let modelTest: ModelTest | null = null;
+if (new URLSearchParams(location.search).has("modeltest")) {
+  void import("./modelTest").then((m) => {
+    modelTest = m.startModelTest(stage.scene, m.modelTestCount(location.search) ?? 1, () => dpr, MAX_DPR);
+  });
+}
 
 let screen: Screen = "title";
 /** How far the shelf has slid down, 0 to 1, as the slide goes (eased), and where it's heading. */
@@ -2007,6 +2016,7 @@ let hugHearts = 0;
 function frame(): void {
   const t = performance.now();
   stepPace(t - last);
+  modelTest?.frame(t - last);
   const dt = Math.min(1 / 20, (t - last) / 1000);
   last = t;
   const now = t / 1000;
@@ -2092,6 +2102,7 @@ function frame(): void {
     (stage.shadow.material as THREE.MeshBasicMaterial).opacity = s;
   }
   renderer.render(stage.scene, camera);
+  modelTest?.drawn(renderer.info);
   drawn();
   requestAnimationFrame(frame);
 }
